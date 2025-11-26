@@ -1,0 +1,32 @@
+{
+  "name": "debugFlow",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm:dev:frontend\" \"npm:dev:backend\"",
+    "dev:frontend": "npm --workspace frontend run dev",
+    "dev:backend": "npm --workspace backend run dev",
+    "build": "npm --workspace frontend run build && npm --workspace backend run build",
+    "lint": "npm --workspace frontend run lint && npm --workspace backend run lint",
+    "format": "prettier -w .",
+    "typecheck": "npm --workspace frontend run typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.3.3"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "@huggingface/inference": "^2.8.1",
+    "@langchain/community": "^0.3.11",
+    "@langchain/openai": "^1.1.0",
+    "@pinecone-database/pinecone": "^6.1.3",
+    "cohere-ai": "^7.19.0",
+    "dotenv": "^17.2.3"
+  }
+}

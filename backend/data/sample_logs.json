@@ -1,0 +1,38 @@
+[
+  {
+      "id": "log_001",
+      "stacktrace": "ModuleNotFoundError: Cannot find module 'express-validator'\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1120:15)",
+      "category": "API Timeout",
+      "source": "api-gateway"
+  },
+  {
+      "id": "log_002",
+      "stacktrace": "Error: connect ECONNREFUSED 127.0.0.1:5432\n    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1494:16)",
+      "category": "Syntax Error", 
+      "source": "auth-service"
+  },
+  {
+      "id": "log_003",
+      "stacktrace": "Uncaught SyntaxError: Unexpected token '}' in JSON.parse at line 22 in dashboard.js",
+      "category": "Syntax Error",
+      "source": "frontend-app"
+  },
+  {
+      "id": "log_004", 
+      "stacktrace": "FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory\n    at Object.createBuffer (node:buffer:330:13)",
+      "category": "Memory Leak",
+      "source": "analytics-service"
+  },
+  {
+      "id": "log_005", 
+      "stacktrace": "UnhandledPromiseRejectionWarning: TypeError: Cannot read property 'status' of undefined\n    at processOrder (/src/payment.js:56:21)",
+      "category": "Unhandled Promise Rejection",
+      "source": "payment-service"
+  },
+  {
+      "id": "log_006", 
+      "stacktrace": "ModuleNotFoundError: Cannot find module 'express-validator'\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1120:15)",
+      "category": "Dependency Error",
+      "source": "build-pipeline"
+  }
+]

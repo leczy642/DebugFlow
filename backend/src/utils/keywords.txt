@@ -1,0 +1,104 @@
+error
+fault
+failure
+bug
+issue
+exception
+stacktrace
+stack
+trace
+logging
+log
+crash
+breakpoint
+undefined
+null
+not found
+timeout
+crashed
+unexpected
+mismatch
+invalid
+corrupted
+missing
+runtime
+execution
+hang
+freeze
+deadlock
+infinite loop
+bottleneck
+memory leak
+overflow
+underflow
+segfault
+abort
+terminate
+slow
+latency
+performance issue
+resource exhaustion
+high cpu
+high memory
+syntax error
+reference error
+type error
+compile error
+dependency error
+module not found
+import error
+undefined variable
+undefined function
+undefined reference
+missing module
+missing dependency
+500 error
+503 error
+connection refused
+connection reset
+timeout error
+dns error
+network error
+api failure
+gateway error
+bad request
+unauthorized
+forbidden
+rate limit
+throttled
+payload too large
+invalid response
+malformed json
+404 error 
+sql error
+query failed
+constraint violation
+transaction error
+deadlock detected
+primary key conflict
+foreign key conflict
+row not found
+schema mismatch
+migration failed
+connection timeout
+database locked
+deployment failed
+build failed
+container error
+docker error
+service down
+healthcheck failed
+crashed service
+crashed process
+restart loop
+logs unavailable
+configuration error
+env mismatch
+port already in use
+permission denied
+issue
+cannot
+server
+database
+failed
+problem

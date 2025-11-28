@@ -1,167 +1,157 @@
-// retrieve-similar-logs.js
+// retrieveSimilarLogs.js
+// PURPOSE: Convert log text → embeddings → vector search in Pinecone
+// WHY: Used by analyzeError to retrieve similar incidents for debugging context
 
-import dotenv from "dotenv";
-dotenv.config();
+// import dotenv from "dotenv";
+// dotenv.config();
+import "dotenv/config";  // loads .env automatically from project root
 
+
+import { InferenceClient } from "@huggingface/inference";
 import { OpenAIEmbeddings } from "@langchain/openai";
-import { HfInference } from "@huggingface/inference";
 import { Pinecone } from "@pinecone-database/pinecone";
-import { config } from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
+import { logger } from "../utils/logger.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const TEST_MODE = process.env.TEST_MODE === "true";
 
-// Load environment
-const envPath = path.join(__dirname, "..","..", ".env");
-config({ path: envPath });
+// -------------------------------
+// Winston Structured Logging
+// Why: Enables production-safe logs + JSON formatting for observability
+// -------------------------------
 
-console.log(envPath);
 
-if (!process.env.PINECONE_API_KEY) {
-  console.error("❌ Missing Pinecone API Key");
-  process.exit(1);
+// -------------------------------
+// Pinecone Init (same config style as analyzeError.js)
+// Why: Keep system consistent across services
+// -------------------------------
+const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
+const PINECONE_INDEX = process.env.PINECONE_INDEX_NAME;
+
+if (!PINECONE_API_KEY || !PINECONE_INDEX) {
+  logger.error("Missing Pinecone credentials");
+  throw new Error("Missing Pinecone configuration");
 }
 
-const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
-const index = pinecone.Index(process.env.PINECONE_INDEX_NAME);
+const pinecone = new Pinecone({ apiKey: PINECONE_API_KEY });
+const index = pinecone.Index(PINECONE_INDEX);
 
-// Embedding Providers
+// -------------------------------
+// Embedding Provider Init
+// Input: Plain text string
+// Output: Numeric embedding vector array
+// Why: Used for similarity search
+// -------------------------------
 const openaiEmbeddings = new OpenAIEmbeddings({
   apiKey: process.env.OPENAI_API_KEY,
   model: "text-embedding-3-small",
 });
 
-const hf = new HfInference(
-  process.env.HUGGINGFACE_API_KEY,
-  "https://router.huggingface.co/hf-inference"
-);
+const hf = new InferenceClient(process.env.HUGGINGFACE_API_KEY);
 
-class EmbeddingService {
-  async generateEmbedding(text) {
-    // Try OpenAI first
-    if (process.env.OPENAI_API_KEY) {
-      try {
-        if (process.env.NODE_ENV !== "production") {
-          console.log("🤖 Using OpenAI embeddings...");
-        }
-        return await openaiEmbeddings.embedQuery(text);
-      } catch (err) {
-        if (process.env.NODE_ENV !== "production") {
-          console.log("⚠️ OpenAI failed, falling back:", err.message);
-        }
-      }
-    }
-
-    if (process.env.HUGGINGFACE_API_KEY) {
-      try {
-        if (process.env.NODE_ENV !== "production") {
-          console.log("🦙 Using HuggingFace embeddings...");
-        }
-        return await hf.featureExtraction({
-          model: "sentence-transformers/all-MiniLM-L6-v2",
-          inputs: text,
-        });
-      } catch (err) {
-        console.error("❌ HuggingFace failed:", err.message);
-      }
-    }
-
-    throw new Error("No embedding provider available");
-  }
-}
-
-const embeddingService = new EmbeddingService();
-
-// Retrieve Similar Logs
-export async function retrieveSimilarLogs(query, topK = 5) {
+// -------------------------------
+// generateEmbedding()
+// Input: user text
+// Output: embedding vector
+// WHY: Uses HF fallback if OpenAI fails
+// -------------------------------
+async function generateEmbedding(text) {
   try {
-    if (process.env.NODE_ENV !== "production") {
-      console.log(`\n🔍 Searching for logs similar to: "${query}"`);
-    }
-
-    const vector = await embeddingService.generateEmbedding(query);
-
-    const response = await index.query({
-      vector,
-      topK,
-      includeMetadata: true,
+    return await openaiEmbeddings.embedQuery(text);
+  } catch {
+    logger.warn("OpenAI embedding failed → using HuggingFace fallback");
+    return await hf.featureExtraction({
+      model: "sentence-transformers/all-MiniLM-L6-v2",
+      inputs: text,
     });
-
-    return response.matches.map((m) => ({
-      id: m.id,
-      score: m.score,
-      type: m.metadata?.type || "unknown",
-      source: m.metadata?.source || "unknown",
-      category: m.metadata?.category || "unknown",
-      timestamp: m.metadata?.timestamp || "unknown",
-      text: m.metadata?.text || "No content", 
-    }));
-  } catch (err) {
-    console.error("❌ Retrieval error:", err.message);
-    return [];
   }
 }
 
-// Minimal Safe Logging (production-friendly)
-function displayResults(results, query) {
-  if (process.env.NODE_ENV !== "production") {
-    console.log(`\n🎯 Top ${results.length} logs for "${query}"`);
-    console.log("─".repeat(80));
-  }
+// -------------------------------
+// retrieveSimilarLogs()
+// WHAT: Vector search against Pinecone
+// INPUT: query string, topK results
+// OUTPUT: array of normalized log objects
+// WHY: Primary retrieval engine for analyzeError()
+// -------------------------------
+export async function retrieveSimilarLogs(query, topK = 5) {
+  logger.info({ event: "embedding_start", query });
 
-  results.forEach((log, i) => {
-    if (process.env.NODE_ENV !== "production") {
-      // Verbose only in dev
-      console.log(`\n${i + 1}. ${log.type.toUpperCase()} (${log.source})`);
-      console.log(`   Score: ${(log.score * 100).toFixed(2)}%`);
-      console.log(`   Category: ${log.category}`);
-      console.log(`   Timestamp: ${log.timestamp}`);
-      console.log(`   Content: ${log.text.slice(0, 120)}...`);
-      console.log("   ───────────────────────────────────────────────");
-    }
+  const vector = await generateEmbedding(query);
+
+  logger.info({ event: "pinecone_query", topK });
+
+  const response = await index.query({
+    vector,
+    topK,
+    includeMetadata: true,
   });
 
-  // Production-safe output
-  if (process.env.NODE_ENV === "production") {
-    console.log(
-      JSON.stringify(
-        {
-          query,
-          count: results.length,
-          results: results.map((r) => ({
-            id: r.id,
-            type: r.type,
-            source: r.source,
-            category: r.category,
-            score: Number(r.score.toFixed(4)),
-          })),
-        },
-        null,
-        2
-      )
-    );
-  }
+  return response.matches.map((m) => ({
+    id: m.id,
+    score: m.score,
+    type: m.metadata?.type || "unknown",
+    source: m.metadata?.source || "unknown",
+    category: m.metadata?.category || "unknown",
+    timestamp: m.metadata?.timestamp || "unknown",
+    text: m.metadata?.text || "No content",
+  }));
 }
 
-async function main() {
-  const query = process.argv[2] || "error in application";
-  const topK = parseInt(process.argv[3]) || 5;
-
-  const results = await retrieveSimilarLogs(query, topK);
-  displayResults(results, query);
+// -------------------------------
+// displayResultsTest()
+// WHAT: Dev-friendly colorful console print
+// INPUT: results[] array
+// OUTPUT: pretty display for humans
+// -------------------------------
+export function displayResultsTest(results, query) {
+  console.log(`\n🔍 Test Results for "${query}"`);
+  results.forEach((r, i) => {
+    console.log(`\n#${i + 1} (${(r.score * 100).toFixed(2)}%)`);
+    console.log(`Type:      ${r.type}`);
+    console.log(`Source:    ${r.source}`);
+    console.log(`Category:  ${r.category}`);
+    console.log(`Timestamp: ${r.timestamp}`);
+    console.log(`Content:   ${r.text.slice(0, 140)}...`);
+  });
+  console.log("\n----------------------------------------\n");
 }
 
+// -------------------------------
+// displayResultsProduction()
+// WHAT: Machine-consumable JSON output
+// WHY: CI/CD, monitoring, backend integration
+// -------------------------------
+export function displayResultsProduction(results, query) {
+  console.log(
+    JSON.stringify(
+      {
+        query,
+        count: results.length,
+        results: results.map((r) => ({
+          id: r.id,
+          type: r.type,
+          source: r.source,
+          category: r.category,
+          score: Number(r.score.toFixed(4)),
+        })),
+      },
+      null,
+      2
+    )
+  );
+}
+
+// -------------------------------
+// CLI Mode for quick manual testing
+// INPUT: node retrieve.js "login error"
+// -------------------------------
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
-}
+  const query = process.argv[2] || "database connection error";
+  const topK = Number(process.argv[3] || 5);
 
-export {EmbeddingService };
-/**To run in terminal
- * "database connection error" represents the error to enter at terminal retrieve from 
- * it's similar logs, you can enter any error you can think of eg error 404 etc. 
- * node retrieveSimilarLogs.js "database connection error"
- switch to production from the terminal by typing
- export NODE_ENV=production
- */
+  retrieveSimilarLogs(query, topK).then((results) =>
+    TEST_MODE
+      ? displayResultsTest(results, query)
+      : displayResultsProduction(results, query)
+  );
+}

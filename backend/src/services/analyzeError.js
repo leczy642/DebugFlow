@@ -5,16 +5,16 @@
  * Supports single and batch queries, test and production display modes.
  * Structured logging in production, emojis & console logs in test mode.
  */
-
+import "../utils/loadEnv.js";
 import { InferenceClient } from "@huggingface/inference";
-import { retrieveSimilarLogs, EmbeddingService } from './retrieveSimilarLogs.js';
+import { RetrieveSimilarLogsService, retrieveSimilarLogs} from './retrieveSimilarLogs.js';
 import { retryWithBackoff } from "../utils/retry.js";
 import { logger } from "../utils/logger.js";
 import { withTimeout } from "../utils/withTimeout.js";
 import { normalizeUserQuery } from "../utils/promptValidator.js";
 
 // Initialize Hugging Face LLM client
-const client = new InferenceClient(process.env.HUGGINGFACE_API_KEY);
+//const client = new InferenceClient(process.env.HUGGINGFACE_API_KEY);
 const LLM_CHAT_MODEL = process.env.HUGGINGFACE_CHAT_MODEL || "deepseek-ai/DeepSeek-V3.1:novita";
 const MAX_PROMPT_CHARS = Number(process.env.MAX_PROMPT_CHARS || 7000);
 const LLM_RETRY_DELAY = Number(process.env.LLM_RETRY_BASE_DELAY_MS || 500);
@@ -30,7 +30,8 @@ const LLM_RETRIES = Number(process.env.LLM_RETRIES || 3);
  */
 class LogAnalysisService {
     constructor() {
-        this.embeddingService = new EmbeddingService(); // For future embedding-based retrieval
+        //this.embeddingService = new EmbeddingService(); // For future embedding-based retrieval
+        this.client = new InferenceClient(process.env.HUGGINGFACE_API_KEY);
     }
 
     /**
@@ -96,7 +97,7 @@ class LogAnalysisService {
 
             const chatCompletion = await retryWithBackoff(
                 () => withTimeout(
-                    signal => client.chatCompletion({
+                    signal => this.client.chatCompletion({
                         model: LLM_CHAT_MODEL,
                         messages: [{ role: "user", content: prompt }],
                         signal
@@ -142,7 +143,7 @@ class LogAnalysisService {
 
             const chatCompletion = await retryWithBackoff(
                 () => withTimeout(
-                    signal => client.chatCompletion({
+                    signal => this.client.chatCompletion({
                         model: LLM_CHAT_MODEL,
                         messages: [{ role: "user", content: summaryPrompt }],
                         signal

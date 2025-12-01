@@ -4,9 +4,10 @@
 
 // import dotenv from "dotenv";
 // dotenv.config();
-import "dotenv/config";  // loads .env automatically from project root
 
-
+//import "dotenv/config";  // loads .env automatically from project root
+//import { loadEnv } from "../utils/loadEnv.js";
+import "../utils/loadEnv.js";
 import { InferenceClient } from "@huggingface/inference";
 import { OpenAIEmbeddings } from "@langchain/openai";
 import { Pinecone } from "@pinecone-database/pinecone";
@@ -46,7 +47,7 @@ const openaiEmbeddings = new OpenAIEmbeddings({
   model: "text-embedding-3-small",
 });
 
-const hf = new InferenceClient(process.env.HUGGINGFACE_API_KEY);
+//const hf = new InferenceClient(process.env.HUGGINGFACE_API_KEY);
 
 // -------------------------------
 // generateEmbedding()
@@ -54,18 +55,24 @@ const hf = new InferenceClient(process.env.HUGGINGFACE_API_KEY);
 // Output: embedding vector
 // WHY: Uses HF fallback if OpenAI fails
 // -------------------------------
-async function generateEmbedding(text) {
-  try {
-    return await openaiEmbeddings.embedQuery(text);
-  } catch {
-    logger.warn("OpenAI embedding failed → using HuggingFace fallback");
-    return await hf.featureExtraction({
-      model: "sentence-transformers/all-MiniLM-L6-v2",
-      inputs: text,
-    });
+class RetrieveSimilarLogsService {
+
+  constructor(){
+    this.hf = new InferenceClient(process.env.HUGGINGFACE_API_KEY);
+  }
+
+  async generateEmbedding(text) {
+    try {
+      return await openaiEmbeddings.embedQuery(text);
+    } catch {
+      logger.warn("OpenAI embedding failed → using HuggingFace fallback");
+      return await this.hf.featureExtraction({
+        model: "sentence-transformers/all-MiniLM-L6-v2",
+        inputs: text,
+      });
+    }
   }
 }
-
 // -------------------------------
 // retrieveSimilarLogs()
 // WHAT: Vector search against Pinecone
@@ -73,19 +80,25 @@ async function generateEmbedding(text) {
 // OUTPUT: array of normalized log objects
 // WHY: Primary retrieval engine for analyzeError()
 // -------------------------------
+const retrieveSimilarLogsService = new RetrieveSimilarLogsService();
+
 export async function retrieveSimilarLogs(query, topK = 5) {
   logger.info({ event: "embedding_start", query });
 
-  const vector = await generateEmbedding(query);
+  //generate embedding
+  //const vector = await generateEmbedding(query);
+  const vector = await retrieveSimilarLogsService.generateEmbedding(query);
 
   logger.info({ event: "pinecone_query", topK });
 
+  //query pinecone with the embeddings 
   const response = await index.query({
     vector,
     topK,
     includeMetadata: true,
   });
 
+  //return the topK results
   return response.matches.map((m) => ({
     id: m.id,
     score: m.score,
@@ -155,3 +168,32 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       : displayResultsProduction(results, query)
   );
 }
+
+export {RetrieveSimilarLogsService };
+// ---------------------------
+// Running this module in commandline 
+// ---------------------------
+//1. TEST MODE
+//----------------------------
+// DEBUGFLOW_TEST_MODE=true node retrieveSimilarLogs.js "database connection timeout"
+
+//TEST MODE - BATCH TESTING
+// DEBUGFLOW_TEST_MODE=true node retrieveSimilarLogs.js --batch
+
+//TEST MODE - SUMMARY
+//DEBUGFLOW_TEST_MODE=true node retrieveSimilarLogs.js --batch --summary
+//--summary generates executive summaries for each query:
+
+
+//2. PRODUCTION MODE
+//------------------
+// node retrieveSimilarLogs.js "database connection timeout"
+
+
+//PRODUCTION MODE - BATCH example
+// node retrieveSimilarLogs.js --batch
+
+
+//PRODUCTION MODE - SUMMARY
+//node retrieveSimilarLogs.js --batch --summary
+//--summary generates executive summaries for each query:

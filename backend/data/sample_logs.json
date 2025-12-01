@@ -34,5 +34,78 @@
       "stacktrace": "ModuleNotFoundError: Cannot find module 'express-validator'\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1120:15)",
       "category": "Dependency Error",
       "source": "build-pipeline"
+  },
+  {
+    "id": "log_007",
+    "stacktrace": "ReferenceError: userID is not defined\n    at getUserProfile (/src/userService.js:42:13)\n    at processTicksAndRejections (node:internal/process/task_queues:96:5)",
+    "category": "Runtime Error",
+    "source": "user-service"
+  },
+  {
+    "id": "log_008",
+    "stacktrace": "TypeError: Cannot read properties of null (reading 'map')\n    at renderProductList (/src/components/ProductList.jsx:28:21)\n    at React.createElement",
+    "category": "Type Error",
+    "source": "frontend-app"
+  },
+  {
+    "id": "log_009",
+    "stacktrace": "SequelizeConnectionError: Connection terminated unexpectedly\n    at Client._connectionCallback (/node_modules/pg/lib/client.js:138:13)\n    at emitErrorNT (node:internal/streams/destroy:151:8)",
+    "category": "Database Error",
+    "source": "order-service"
+  },
+  {
+    "id": "log_010",
+    "stacktrace": "RangeError: Maximum call stack size exceeded\n    at recursiveFunction (/src/utils/helpers.js:15:5)\n    at recursiveFunction (/src/utils/helpers.js:16:12)",
+    "category": "Runtime Error",
+    "source": "api-gateway"
+  },
+  {
+    "id": "log_011",
+    "stacktrace": "Jest encountered an unexpected token\nSyntaxError: Unexpected token 'export'\n    at Runtime.createScriptFromCode (/node_modules/jest-runtime/build/index.js:1728:14)",
+    "category": "Test Failure",
+    "source": "test-runner"
+  },
+  {
+    "id": "log_012",
+    "stacktrace": "WebSocket connection to 'wss://api.example.com/socket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED\n    at WebSocket.init (/src/socket.js:45:21)",
+    "category": "Network Error",
+    "source": "notification-service"
+  },
+  {
+    "id": "log_013",
+    "stacktrace": "Error: ENOENT: no such file or directory, open '/var/log/app/application.log'\n    at Object.openSync (node:fs:585:3)\n    at writeLogEntry (/src/logger.js:33:15)",
+    "category": "File System Error",
+    "source": "logging-service"
+  },
+  {
+    "id": "log_014",
+    "stacktrace": "ValidationError: \"email\" must be a valid email\n    at Object.validate (/src/middleware/validation.js:89:23)\n    at processTicksAndRejections (node:internal/process/task_queues:96:5)",
+    "category": "Validation Error",
+    "source": "auth-service"
+  },
+  {
+    "id": "log_015",
+    "stacktrace": "Redis connection to localhost:6379 failed - connect ECONNREFUSED 127.0.0.1:6379\n    at Socket.<anonymous> (/node_modules/redis/index.js:272:41)\n    at Socket.emit (node:events:526:28)",
+    "category": "Cache Error",
+    "source": "session-store"
+  },
+  {
+    "id": "log_016",
+    "stacktrace": "Error: Request failed with status code 429\n    at createError (/node_modules/axios/lib/core/createError.js:16:15)\n    at settle (/node_modules/axios/lib/core/settle.js:17:12)",
+    "category": "Rate Limit Exceeded",
+    "source": "external-api-client"
+  },
+  {
+    "id": "log_017",
+    "stacktrace": "Error: Cannot find module '../config/database' from '/src/models/User.js'\n    at resolveSync (/node_modules/jest-resolve/build/resolver.js:311:13)\n    at Object.resolve (/node_modules/jest-resolve/build/index.js:259:14)",
+    "category": "Module Resolution Error",
+    "source": "test-suite"
+  },
+  {
+    "id": "log_018",
+    "stacktrace": "Error: 14 UNAVAILABLE: No connection established\n    at Object.exports.createStatusError (/node_modules/@grpc/grpc-js/build/src/call.js:31:26)\n    at ClientHttp2Stream.<anonymous> (/node_modules/@grpc/grpc-js/build/src/client.js:96:33)",
+    "category": "gRPC Error",
+    "source": "microservice-a"
   }
+  
 ]

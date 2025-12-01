@@ -8,59 +8,44 @@
 //
 // Usage: NODE_ENV=production node ingest_embeddings.js
 // For local dev: node ingest_embeddings.js
+//load env
+import "../utils/loadEnv.js";
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { config as dotenvConfig } from 'dotenv';
 import pLimit from 'p-limit';
 import pRetry from 'p-retry';
-import winston from 'winston';
-import { HfInference } from '@huggingface/inference';
+import { InferenceClient } from '@huggingface/inference';
 import { Pinecone } from '@pinecone-database/pinecone';
+import { logger } from "../utils/logger.js";
 
 // ---------- Basic runtime & project paths ----------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load .env only for local/dev environments. In production use env injection/secrets manager.
-if (process.env.NODE_ENV !== 'production') {
-  dotenvConfig(); // will load .env from project root by default
-}
-
 // ---------- Configuration (tweakable) ----------
-const CONFIG = {
-  HUGGINGFACE_MODEL: process.env.HUGGINGFACE_MODEL || 'sentence-transformers/all-MiniLM-L6-v2',
-  PINECONE_INDEX: process.env.PINECONE_INDEX || 'debug-logs-hf',
-  INPUT_FILE: process.env.INPUT_FILE || path.join(__dirname, '..','..', 'data', 'sample_logs.json'),
-  CONCURRENCY: Number(process.env.CONCURRENCY) || 4,        // how many HF requests in parallel
-  BATCH_SIZE: Number(process.env.BATCH_SIZE) || 100,       // how many vectors per Pinecone upsert
-  RETRIES: Number(process.env.RETRIES) || 3,               // retries for transient errors
-  RETRY_FACTOR: Number(process.env.RETRY_FACTOR) || 2,     // backoff multiplier
-  RETRY_MIN_TIMEOUT: Number(process.env.RETRY_MIN_TIMEOUT) || 500, // ms
-};
+  const HUGGINGFACE_MODEL = process.env.HHUGGINGFACE_EMBEDDING_MODEL || 'sentence-transformers/all-MiniLM-L6-v2';
+  const PINECONE_INDEX = process.env.PINECONE_INDEX || 'debug-logs-hf';
+  const INPUT_FILE = process.env.INPUT_FILE || path.join(__dirname, '..','..', 'data', 'sample_logs.json');
+  const CONCURRENCY = Number(process.env.CONCURRENCY) || 4;       // how many HF requests in parallel
+  const BATCH_SIZE =  Number(process.env.BATCH_SIZE) || 100;       // how many vectors per Pinecone upsert
+  const RETRIES = Number(process.env.RETRIES) || 3;               // retries for transient errors
+  const RETRY_FACTOR = Number(process.env.RETRY_FACTOR) || 2;     // backoff multiplier
+  const RETRY_MIN_TIMEOUT = Number(process.env.RETRY_MIN_TIMEOUT) || 500; // ms
 
-// ---------- Basic logger (no secrets) ----------
-const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.printf(({ timestamp, level, message }) => `${timestamp} ${level}: ${message}`)
-  ),
-  transports: [new winston.transports.Console()],
-});
 
-// ---------- Validate required envs ----------
-function requireEnv(name) {
-  if (!process.env[name]) {
-    logger.error(`Missing required environment variable: ${name}`);
-    process.exit(1);
-  }
-}
-requireEnv('PINECONE_API_KEY');
-requireEnv('HUGGINGFACE_API_KEY');
+//---------- Basic logger (no secrets) ----------
+// const logger = winston.createLogger({
+//   level: process.env.LOG_LEVEL || 'info',
+//   format: winston.format.combine(
+//     winston.format.timestamp(),
+//     winston.format.printf(({ timestamp, level, message }) => `${timestamp} ${level}: ${message}`)
+//   ),
+//   transports: [new winston.transports.Console()],
+// });
 
 // ---------- Instantiate clients ----------
-const hf = new HfInference(process.env.HUGGINGFACE_API_KEY, 'https://router.huggingface.co/hf-inference');
+const hf = new InferenceClient(process.env.HUGGINGFACE_API_KEY, 'https://router.huggingface.co/hf-inference');
 // Pinecone client (uses API key)
 const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
 
@@ -83,14 +68,14 @@ function chunkArray(arr, size) {
 
 // retry wrapper for API calls
 async function retryable(fn, opts = {}) {
-  const { retries = CONFIG.RETRIES } = opts;
+  const { retries = RETRIES } = opts;
   return pRetry(fn, {
     onFailedAttempt: (err) => {
       logger.warn(`Attempt ${err.attemptNumber} failed. ${err.retriesLeft} retries left. ${err.message}`);
     },
     retries,
-    factor: CONFIG.RETRY_FACTOR,
-    minTimeout: CONFIG.RETRY_MIN_TIMEOUT,
+    factor: RETRY_FACTOR,
+    minTimeout: RETRY_MIN_TIMEOUT,
   });
 }
 
@@ -122,16 +107,16 @@ function loadDocumentsFromFile(filePath) {
 
 // ---------- Core: generate embeddings with concurrency + retry ----------
 async function embedDocuments(documents) {
-  logger.info(`Generating embeddings for ${documents.length} documents (concurrency=${CONFIG.CONCURRENCY})`);
+  logger.info(`Generating embeddings for ${documents.length} documents (concurrency=${CONCURRENCY})`);
 
-  const limit = pLimit(CONFIG.CONCURRENCY);
+  const limit = pLimit(CONCURRENCY);
 
   const jobs = documents.map((doc) =>
     limit(() =>
       retryable(async () => {
         // Hugging Face 'featureExtraction' returns array of floats for single input
         const resp = await hf.featureExtraction({
-          model: CONFIG.HUGGINGFACE_MODEL,
+          model: HUGGINGFACE_MODEL,
           inputs: doc.stacktrace,
         });
 
@@ -180,7 +165,7 @@ async function embedDocuments(documents) {
 // ---------- Core: upsert to Pinecone in batches with retries ----------
 
 async function upsertVectors(index, vectors) {
-  const batchSize = 100;
+  const batchSize = BATCH_SIZE;
 
   for (let i = 0; i < vectors.length; i += batchSize) {
     const batch = vectors.slice(i, i + batchSize);
@@ -193,9 +178,7 @@ async function upsertVectors(index, vectors) {
 
     try {
       // ✅ Correct Pinecone v3 format
-      await index.upsert({
-        vectors: batch
-      });
+      await index.upsert(batch);
 
       logger.info("Batch upserted successfully");
     } catch (err) {
@@ -211,7 +194,7 @@ async function main() {
 
   let docs;
   try {
-    docs = loadDocumentsFromFile(CONFIG.INPUT_FILE);
+    docs = loadDocumentsFromFile(INPUT_FILE);
   } catch (err) {
     logger.error(`Failed to load input: ${err.message}`);
     process.exit(2);
@@ -220,9 +203,9 @@ async function main() {
   // get Pinecone index handle
   let index;
   try {
-    index = pinecone.index(CONFIG.PINECONE_INDEX);
+    index = pinecone.index(PINECONE_INDEX);
   } catch (err) {
-    logger.error(`Failed to get Pinecone index handle for "${CONFIG.PINECONE_INDEX}": ${err.message}`);
+    logger.error(`Failed to get Pinecone index handle for "${PINECONE_INDEX}": ${err.message}`);
     process.exit(3);
   }
 
@@ -246,7 +229,7 @@ async function main() {
   try {
     const testQuery = 'resource not found';
     logger.info('Running test query to verify data (no sensitive info will be logged)');
-    const queryEmbedding = await hf.featureExtraction({ model: CONFIG.HUGGINGFACE_MODEL, inputs: testQuery });
+    const queryEmbedding = await hf.featureExtraction({ model: HUGGINGFACE_MODEL, inputs: testQuery });
     const vector = Array.isArray(queryEmbedding[0]) ? queryEmbedding[0] : queryEmbedding;
 
     // Query API shape may vary. Example:

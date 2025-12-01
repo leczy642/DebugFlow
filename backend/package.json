@@ -16,7 +16,8 @@
     "test:retrieveSimilarLogs-test": "node tests/retrieveSimilarLogs-test.js",
     "test:retrieveSimilarLogs": "node src/services/retrieveSimilarLogs.js",
     "test:analyzeError-test": "node tests/analyzeError-test.js",
-    "test:analyzeError": "node src/services/analyzeError.js"
+    "test:analyzeError": "node src/services/analyzeError.js",
+    "test:app_testing": "node tests/app_testing.js"
   },
   "dependencies": {
     "@google-cloud/vertexai": "^1.10.0",

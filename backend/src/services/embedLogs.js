@@ -245,8 +245,16 @@ async function main() {
 }
 
 // run
-main().catch((err) => {
-  logger.error(`Unhandled error in ingestion script: ${err?.message || err}`);
-  logger.error(err?.stack || '');
-  process.exit(99);
-});
+// main().catch((err) => {
+//   logger.error(`Unhandled error in ingestion script: ${err?.message || err}`);
+//   logger.error(err?.stack || '');
+//   process.exit(99);
+// });
+
+//export {embedDocuments}
+
+export {
+  main as runIngestion,   // CLI can run this
+  embedDocuments,
+  loadDocumentsFromFile,
+};

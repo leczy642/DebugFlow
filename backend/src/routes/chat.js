@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../utils/index.js';
-import { analyzeError } from '../services/analyzeError.js';
+//import { analyzeError } from '../services/analyzeError.js';
+import { LogAnalysisService } from '../services/analyzeError.js';
 
 const router = Router();
+
+const analysisService = new LogAnalysisService();
 
 const ChatBody = z.object({
   message: z.string(),
@@ -13,7 +16,7 @@ const ChatBody = z.object({
 router.post('/', asyncHandler(async (req, res) => {
   const { message } = ChatBody.parse(req.body);
   // For MVP, call analyze pipeline with the message only
-  const result = await analyzeError({ message }, []);
+  const result = await analysisService.analyzeLogsWithLLM({ message }, []);
   res.json({ reply: result.summary, citations: result.similar });
 }));
 

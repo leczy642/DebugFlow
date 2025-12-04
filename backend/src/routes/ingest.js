@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { embedLogsCohere } from "../services/embedLogsCohere.js";
+import { embedDocuments } from "../services/embedLogs.js";
 import { getPineconeIndex } from "../db/connect.js";
 
 const router = Router();
@@ -28,7 +28,7 @@ router.post("/", async (req, res) => {
     // 1️⃣ Generate embeddings with Cohere
     let embeddingsArray;
     try {
-      embeddingsArray = await embedLogsCohere(logs);
+      embeddingsArray = await embedDocuments(logs);
     } catch (err) {
       console.error("Embedding generation failed:", err);
       return res.status(400).json({ 

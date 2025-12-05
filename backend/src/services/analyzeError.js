@@ -18,7 +18,7 @@ import { normalizeUserQuery } from "../utils/promptValidator.js";
 const LLM_CHAT_MODEL = process.env.HUGGINGFACE_CHAT_MODEL || "deepseek-ai/DeepSeek-V3.1:novita";
 const MAX_PROMPT_CHARS = Number(process.env.MAX_PROMPT_CHARS || 7000);
 const LLM_RETRY_DELAY = Number(process.env.LLM_RETRY_BASE_DELAY_MS || 500);
-const LLM_CHAT_TIMEOUT_MS = Number(process.env.HUGGINGFACE_CHAT_TIMEOUT_MS || 15000);
+const LLM_CHAT_TIMEOUT_MS = Number(process.env.HUGGINGFACE_CHAT_TIMEOUT_MS || 8000);
 const LLM_RETRIES = Number(process.env.LLM_RETRIES || 3);
 
 /**

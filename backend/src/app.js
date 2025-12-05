@@ -35,7 +35,7 @@ import { logger } from './utils/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
 
-// Routers
+// setting up Routers
 import ingestRouter from './routes/ingest.js';
 import analyzeRouter from './routes/analyze.js';
 import chatRouter from './routes/chat.js';
@@ -60,10 +60,10 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API routes
+// using the API routes
 // app.use('/api/ingest', ingestRouter);
 app.use('/api/analyze', analyzeRouter);
-// app.use('/api/chat', chatRouter);
+app.use('/api/chat', chatRouter);
 
 // Global error handler (must be last)
 app.use(errorHandler(logger));

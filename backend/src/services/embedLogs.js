@@ -244,7 +244,7 @@ async function main() {
   process.exit(0);
 }
 
-// run
+// uncomment to run in the CLI, restore comments after testing in CLI
 // main().catch((err) => {
 //   logger.error(`Unhandled error in ingestion script: ${err?.message || err}`);
 //   logger.error(err?.stack || '');

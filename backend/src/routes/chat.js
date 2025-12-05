@@ -1,23 +1,73 @@
-import { Router } from 'express';
-import { z } from 'zod';
-import { asyncHandler } from '../utils/index.js';
-//import { analyzeError } from '../services/analyzeError.js';
-import { LogAnalysisService } from '../services/analyzeError.js';
+/**
+ * POST /chat
+ * 
+ * Handles user chat messages and returns AI-generated responses.
+ * 
+ * Input (req.body):
+ *   - message: string - User's chat message
+ * 
+ * Output (res.json):
+ *   Success (200): { success: true, reply: string }
+ *   Error (400): { success: false, error: string } - Invalid input
+ *   Error (500): { success: false, error: string } - Server/AI error
+ */
 
-const router = Router();
+import express from 'express';
+import { logger } from '../utils/logger.js';
+import { chatWithAI } from '../services/chatService.js';
+import { normalizeUserQuery } from '../utils/promptValidator.js';
+import { retryWithBackoff } from '../utils/retry.js';
+import { withTimeout } from '../utils/withTimeout.js';
 
-const analysisService = new LogAnalysisService();
+const router = express.Router();
 
-const ChatBody = z.object({
-  message: z.string(),
-  context: z.record(z.any()).optional(),
+router.post('/', async (req, res) => {
+  try {
+    // Load timeout configuration from environment
+    const LLM_CHAT_TIMEOUT_MS = Number(process.env.HUGGINGFACE_CHAT_TIMEOUT_MS || 8000);
+    
+    // Extract message from request body
+    const { message } = req.body;
+    
+    // Validate message is a non-empty string
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({
+        error: "Invalid parameter: prompt must be a string"
+      });
+    }
+    
+    // Normalize and sanitize user query
+    const normalizedMessage = normalizeUserQuery(message);
+    
+    // Check if normalization succeeded
+    if (!normalizedMessage.ok) {
+      logger.warn('Query failed normalization', { message });
+      return res.status(400).json({ 
+        success: false, 
+        error: normalizedMessage.error 
+      });
+    }
+    
+    // Call AI service with timeout and retry logic
+    const reply = await withTimeout(
+      () => retryWithBackoff(() => chatWithAI(normalizedMessage.query)), 
+      LLM_CHAT_TIMEOUT_MS
+    );
+    
+    // Return successful response
+    return res.status(200).json({
+      success: true,
+      reply
+    });
+    
+  } catch (error) {
+    // Log error and return generic error response
+    logger.error('Chat error', { error });
+    return res.status(500).json({
+      success: false,
+      error: "No response from reasoning model"
+    });
+  }
 });
-
-router.post('/', asyncHandler(async (req, res) => {
-  const { message } = ChatBody.parse(req.body);
-  // For MVP, call analyze pipeline with the message only
-  const result = await analysisService.analyzeLogsWithLLM({ message }, []);
-  res.json({ reply: result.summary, citations: result.similar });
-}));
 
 export default router;

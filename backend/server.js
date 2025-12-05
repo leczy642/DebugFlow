@@ -16,9 +16,9 @@ import { createServer } from "http";
 import { app } from "./src/app.js";
 
 // Get the port from the environment variables, default to 4000
-const port = process.env.PORT || 4000;
+const port = process.env.BACKEND_PORT || 4000;
 // Ensure backend listens on all interfaces by default
-const host = process.env.HOST || "0.0.0.0";
+const host = process.env.BACKEND_HOST || "0.0.0.0";
 
 // Create an HTTP server using the Express app
 const server = createServer(app);

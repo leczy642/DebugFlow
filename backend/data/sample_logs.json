@@ -106,6 +106,12 @@
     "stacktrace": "Error: 14 UNAVAILABLE: No connection established\n    at Object.exports.createStatusError (/node_modules/@grpc/grpc-js/build/src/call.js:31:26)\n    at ClientHttp2Stream.<anonymous> (/node_modules/@grpc/grpc-js/build/src/client.js:96:33)",
     "category": "gRPC Error",
     "source": "microservice-a"
+  },
+  {
+    "id": "log_019",
+    "stacktrace": "ReferenceError: Cannot access 'loadedErrorlog' before initialization\n    at file:///var/www/apps/debugflow-backend/src/routes/ingest.js:24:3\n    at Layer.handle [as handle_request] (/var/www/apps/debugflow-backend/node_modules/express/lib/router/layer.js:95:5)\n    at next (/var/www/apps/debugflow-backend/node_modules/express/lib/router/route.js:149:13)\n    at Route.dispatch (/var/www/apps/debugflow-backend/node_modules/express/lib/router/route.js:119:3)\n    at Layer.handle [as handle_request] (/var/www/apps/debugflow-backend/node_modules/express/lib/router/layer.js:95:5)\n    at /var/www/apps/debugflow-backend/node_modules/express/lib/router/index.js:284:15\n    at Function.process_params (/var/www/apps/debugflow-backend/node_modules/express/lib/router/index.js:346:12)\n    at next (/var/www/apps/debugflow-backend/node_modules/express/lib/router/index.js:280:10)\n    at Function.handle (/var/www/apps/debugflow-backend/node_modules/express/lib/router/index.js:175:3)\n    at router (/var/www/apps/debugflow-backend/node_modules/express/lib/router/index.js:47:12)",
+    "category": "Reference Error",
+    "source": "debugFlow-backend"
   }
   
 ]

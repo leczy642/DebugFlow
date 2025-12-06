@@ -1,72 +1,70 @@
-import { Router } from "express";
-import { z } from "zod";
-import { embedDocuments } from "../services/embedLogs.js";
-import { getPineconeIndex } from "../db/connect.js";
 
-const router = Router();
 
-// Schema validation for logs
-const LogSchema = z.object({
-  id: z.string().optional(),
-  timestamp: z.string().optional(),
-  severity: z.string().optional(),
-  service: z.string().optional(),
-  message: z.string(),
-  stack: z.string().optional(),
-  context: z.record(z.any()).optional(),
-});
+import "../utils/loadEnv.js";
+import express from 'express';
+import { logger } from '../utils/logger.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { embedDocuments, loadDocumentsFromFile, upsertVectors } from '../services/embedLogs.js';
+import { Pinecone } from '@pinecone-database/pinecone';
 
-router.post("/", async (req, res) => {
-  try {
-    const logs = req.body.logs;
-    const namespace = req.body.namespace || "default";
+const PINECONE_INDEX = process.env.PINECONE_INDEX || 'debug-logs-hf';
 
-    if (!Array.isArray(logs) || logs.length === 0) {
-      return res.status(400).json({ error: "logs array is required" });
-    }
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-    // 1️⃣ Generate embeddings with Cohere
-    let embeddingsArray;
-    try {
-      embeddingsArray = await embedDocuments(logs);
-    } catch (err) {
-      console.error("Embedding generation failed:", err);
-      return res.status(400).json({ 
-        error: err.message || "Failed to generate embeddings",
-        details: "Check that COHERE_API_KEY is set and valid, and that logs have 'message' or 'content' fields"
+const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
+
+
+//console.log(__dirname);
+
+
+const router = express.Router();
+
+router.post('/', async(req, res) => {
+  try{
+      const {} = req.body
+
+      //load documents from file ✅
+      const INPUT_FILE = path.join(__dirname, '..','..', 'data', 'sample_logs.json');
+      const loadedFileDocument = loadDocumentsFromFile(INPUT_FILE)
+
+      //embed documents ✅
+      const {vectors, failed} = await embedDocuments(loadedFileDocument);
+
+      //generate an error if no embeddings are found
+      if(vectors.length === 0){
+        res.status(400).json({
+          success: false,
+          error: 'No embeddings generated',
+          failedCount: failed.length,
+          failure: failed
+        })
+      }
+
+      //get the pinecone index 
+      const index = pinecone.index(PINECONE_INDEX);
+
+      //upsert to pinecone
+      await upsertVectors(index, vectors)
+
+      res.json({
+        success: true,
+          totalDocuments: loadedFileDocument.length,
+          successfulEmbeddings: vectors.length,
+          failedEmbeddings: failed.length,
+          upsertedVectors: vectors.length,
+          message: 'Embeddings generated and upserted successfully',
+          failures: failed.length > 0 ? failed : undefined
+      });
+    }catch(error){
+      logger.error(`Error in ingest route: ${error.message}`);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
     }
 
-    if (!embeddingsArray || embeddingsArray.length === 0) {
-      return res.status(400).json({ 
-        error: "No vectors generated from logs",
-        details: "Ensure logs have 'message' or 'content' fields and COHERE_API_KEY is valid"
-      });
-    }
-
-    // 2️⃣ Prepare vectors for Pinecone
-    const vectors = embeddingsArray.map((vector, i) => ({
-      id: logs[i].id || `log-${Date.now()}-${i}`,
-      values: vector,
-      metadata: {
-        message: logs[i].message,
-        stack: logs[i].stack || "",
-        service: logs[i].service || "unknown",
-        severity: logs[i].severity || "INFO",
-        timestamp: logs[i].timestamp || new Date().toISOString(),
-        context: logs[i].context || {},
-      },
-    }));
-
-    // 3️⃣ Upsert vectors into Pinecone
-    const index = getPineconeIndex();
-    await index.upsert({ vectors, namespace });
-
-    res.json({ ingested: vectors.length });
-  } catch (err) {
-    console.error("Error ingesting logs:", err);
-    res.status(500).json({ error: err.message });
-  }
 });
-
 export default router;

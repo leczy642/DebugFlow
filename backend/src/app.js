@@ -49,7 +49,7 @@ export const app = express();
 // Global middleware
 app.use(cors({ origin: true }));               // Enable CORS
 app.use(express.json({ limit: '10mb' }));      // Parse JSON bodies
-// app.use(requestLogger(logger));             // Optional request logging
+app.use(requestLogger(logger));             // Optional request logging
 
 // Health check
 app.get('/health', (req, res) => {
@@ -61,7 +61,7 @@ app.get('/health', (req, res) => {
 });
 
 // using the API routes
-// app.use('/api/ingest', ingestRouter);
+app.use('/api/ingest', ingestRouter);
 app.use('/api/analyze', analyzeRouter);
 app.use('/api/chat', chatRouter);
 

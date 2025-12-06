@@ -147,19 +147,20 @@ async function embedDocuments(documents) {
   );
 
   const results = await Promise.allSettled(jobs);
-  const succeeded = [];
-  const failed = [];
+  const vectors = []; //to store embeddings successfully generated
+  const failed = []; //for failed embeddings
 
   results.forEach((r, i) => {
-    if (r.status === 'fulfilled') succeeded.push(r.value);
+    if (r.status === 'fulfilled') vectors.push(r.value);
     else {
       failed.push({ doc: documents[i].id, reason: r.reason?.message || String(r.reason) });
       logger.error(`Embedding failed for doc ${documents[i].id}: ${r.reason?.message || r.reason}`);
     }
   });
 
-  logger.info(`Embeddings: ${succeeded.length} succeeded, ${failed.length} failed`);
-  return { vectors: succeeded, failed };
+  logger.info(`Embeddings: ${vectors.length} succeeded, ${failed.length} failed`);
+return { vectors, failed };
+  //return succeeded;
 }
 
 // ---------- Core: upsert to Pinecone in batches with retries ----------
@@ -244,7 +245,7 @@ async function main() {
   process.exit(0);
 }
 
-// uncomment to run in the CLI, restore comments after testing in CLI
+//uncomment to run in the CLI, restore comments after testing in CLI
 // main().catch((err) => {
 //   logger.error(`Unhandled error in ingestion script: ${err?.message || err}`);
 //   logger.error(err?.stack || '');
@@ -257,4 +258,5 @@ export {
   main as runIngestion,   // CLI can run this
   embedDocuments,
   loadDocumentsFromFile,
+  upsertVectors
 };

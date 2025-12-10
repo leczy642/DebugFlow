@@ -1,123 +1,108 @@
 // lib/store/chatStore.ts
-// lib/store/chatStore.ts
-import { create } from "zustand";
-import { nanoid } from "nanoid"; // Unique ID generation for sessions
 
-/**
- * Zustand store for managing chat sessions and messages.
- * Handles multiple chat sessions with message history and session switching.
- * 
- * Expected input: None - this is a standalone store definition.
- * Expected output: A React hook `useChatStore` that provides:
- *   - `sessions`: Array of all chat sessions
- *   - `activeSessionId`: Currently selected session ID
- *   - `messages`: Messages from active session (derived state)
- *   - `startNewSession`: Creates new chat session
- *   - `selectSession`: Switches between existing sessions
- *   - `sendMessage`: Adds user message to active session
- *   - `receiveMessage`: Adds assistant message to active session
- */
+// lib/store/chatStore.ts // lib/store/chatStore.ts import { create } from "zustand"; import { nanoid } from "nanoid"; 
+// // Unique ID generation for sessions 
+// /** * Zustand store for managing chat sessions and messages.
+//  * Handles multiple chat sessions with message history and session switching. 
+// * * Expected input: None - this is a standalone store definition. 
+// * Expected output: A React hook useChatStore that provides: *
+//  - sessions: Array of all chat sessions * 
+// - activeSessionId: Currently selected session ID * 
+// - messages: Messages from active session (derived state) * 
+// - startNewSession: Creates new chat session * 
+// - selectSession: Switches between existing sessions *
+//  - sendMessage: Adds user message to active session * 
+// - receiveMessage: Adds assistant message to active session */
+import { create } from "zustand";
+import { nanoid } from "nanoid";
 
 type Message = {
-  role: "user" | "assistant"; // Message sender type
-  content: string; // Message text content
+  role: "user" | "assistant";
+  content: string;
 };
 
 type Session = {
-  id: string; // Unique session identifier
-  title: string; // Display title for session
-  messages: Message[]; // Chat history for this session
+  id: string;
+  title: string;
+  messages: Message[];
 };
 
 type ChatStore = {
-  sessions: Session[]; // All chat sessions
-  activeSessionId: string | null; // Currently selected session ID
-  messages: Message[]; // Derived from active session messages
+  sessions: Session[];
+  activeSessionId: string | null;
+  currentSessionId: string | null; // added property
+  messages: Message[];
 
-  startNewSession: () => void; // Create new session
-  selectSession: (sessionId: string) => void; // Switch to existing session
-  sendMessage: (content: string) => void; // Add user message
-  receiveMessage: (content: string) => void; // Add assistant message
+  startNewSession: () => void;
+  selectSession: (sessionId: string) => void;
+  sendMessage: (content: string) => void;
+  receiveMessage: (content: string) => void;
 };
 
 export const useChatStore = create<ChatStore>((set, get) => ({
-  // Initial state - no sessions by default
   sessions: [],
   activeSessionId: null,
+  currentSessionId: null, // initialize
   messages: [],
 
-  // Create new chat session with generated ID
   startNewSession: () => {
-    const newId = nanoid(); // Generate unique session ID
+    const newId = nanoid();
     const newSession: Session = {
       id: newId,
-      title: `Debug Session ${get().sessions.length + 1}`, // Default title
+      title: `Debug Session ${get().sessions.length + 1}`,
       messages: [],
     };
 
     set((state) => ({
-      sessions: [...state.sessions, newSession], // Add to sessions array
-      activeSessionId: newId, // Set as active
-      messages: [], // Reset messages display
+      sessions: [...state.sessions, newSession],
+      activeSessionId: newId,
+      currentSessionId: newId, // sync currentSessionId
+      messages: [],
     }));
   },
 
-  // Switch to existing session by ID
   selectSession: (sessionId) => {
     const session = get().sessions.find((s) => s.id === sessionId);
-    if (!session) return; // Ignore invalid session IDs
+    if (!session) return;
 
     set({
       activeSessionId: sessionId,
-      messages: session.messages, // Load session messages
+      currentSessionId: sessionId, // sync currentSessionId
+      messages: session.messages,
     });
   },
 
-  // Add user message to active session
   sendMessage: (content) => {
     const { activeSessionId, sessions } = get();
-    if (!activeSessionId) return; // Require active session
+    if (!activeSessionId) return;
 
-    // Update messages in target session
     const updatedSessions = sessions.map((session) =>
       session.id === activeSessionId
-        ? {
-            ...session,
-            messages: [
-              ...session.messages,
-              { role: "user", content },
-            ],
-          }
+        ? { ...session, messages: [...session.messages, { role: "user", content }] }
         : session
     );
 
     set({
       sessions: updatedSessions,
       messages: updatedSessions.find((s) => s.id === activeSessionId)!.messages,
+      currentSessionId: activeSessionId, // keep synced
     });
   },
 
-  // Add assistant message to active session
   receiveMessage: (content) => {
     const { activeSessionId, sessions } = get();
-    if (!activeSessionId) return; // Require active session
+    if (!activeSessionId) return;
 
-    // Update messages in target session
     const updatedSessions = sessions.map((session) =>
       session.id === activeSessionId
-        ? {
-            ...session,
-            messages: [
-              ...session.messages,
-              { role: "assistant", content },
-            ],
-          }
+        ? { ...session, messages: [...session.messages, { role: "assistant", content }] }
         : session
     );
 
     set({
       sessions: updatedSessions,
       messages: updatedSessions.find((s) => s.id === activeSessionId)!.messages,
+      currentSessionId: activeSessionId, // keep synced
     });
   },
 }));

@@ -13,8 +13,9 @@ export default function MessageBubble({ role, content }: Props) {
   return (
     <div className={`flex my-3 ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[90%] p-3 rounded-lg whitespace-pre-wrap 
-          ${isUser ? "bg-sky-100 text-gray-900 text-left max-w-[90%]" : "bg-gray-200 text-gray-900 text-left max-w-[100%]"}
+        className={`
+          max-w-[100%] p-3 rounded-lg whitespace-pre-wrap 
+          ${isUser ? "bg-sky-100 text-gray-900 text-left max-w-[90%]" : "bg-gray-0 text-gray-900 text-left max-w-[100%]"}
           `}>
         {content}
       </div>

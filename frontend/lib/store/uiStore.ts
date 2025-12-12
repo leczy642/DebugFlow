@@ -23,37 +23,36 @@
  *   - dockInput(): convenience helper → move input bar to bottom
  */
 
+// lib/store/uiStore.ts
 import { create } from "zustand";
 
 type UIStore = {
   sidebarOpen: boolean;
   inputBarCentered: boolean;
-
   toggleSidebar: () => void;
-
   setInputBarCentered: (value: boolean) => void;
-
   centerInput: () => void;
   dockInput: () => void;
 };
 
 export const useUIStore = create<UIStore>((set) => ({
   sidebarOpen: true,
-
   // Default: input bar starts centered
   inputBarCentered: true,
-
+  
   toggleSidebar: () =>
     set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-
+  
   setInputBarCentered: (value) =>
     set({ inputBarCentered: value }),
-
+  
   // Convenience: center input bar
   centerInput: () =>
     set({ inputBarCentered: true }),
-
+  
   // Convenience: dock input bar at bottom
-  dockInput: () =>
-    set({ inputBarCentered: false }),
+  dockInput: () => {
+    console.log("dockInput called - setting inputBarCentered to false"); // Debug log
+    set({ inputBarCentered: false });
+  },
 }));

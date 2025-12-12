@@ -1,5 +1,7 @@
 // components/chat/InputBar.tsx
 // components/chat/InputBar.tsx
+// components/chat/InputBar.tsx
+// components/chat/InputBar.tsx
 "use client";
 import { useState } from "react";
 import { useChatStore } from '../../lib/store/chatStore';

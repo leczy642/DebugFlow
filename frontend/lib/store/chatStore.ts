@@ -14,8 +14,6 @@
 //  - sendMessage: Adds user message to active session * 
 // - receiveMessage: Adds assistant message to active session */
 // lib/store/chatStore.ts
-// lib/store/chatStore.ts
-// lib/store/chatStore.ts
 import { create } from "zustand";
 
 type Message = {

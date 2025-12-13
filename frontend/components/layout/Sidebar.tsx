@@ -82,7 +82,7 @@ export default function Sidebar() {
 
         {/* SESSION HISTORY */}
         {sidebarOpen && (
-          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+          <div className="flex-1 overflow-y-auto px-3 py-2">
             {sessions.length === 0 && (
               <p className="text-[#999] text-sm">No history yet…</p>
             )}
@@ -94,16 +94,18 @@ export default function Sidebar() {
                   onClick={() => selectSession(session.id)}
                   className={`
                     block cursor-pointer
-                    px-3 py-3 text-sm
+                    px-3 py-2.5 text-sm
                     rounded-xl
                     flex items-center
                     transition-colors duration-200
                     ${isActive 
-                      ? "bg-[#e4edfd] text-blue-700 shadow-md"
+                      ? "bg-[#e4edfd] text-blue-700"
                       : "bg-transparent text-[#1A1A1A] hover:bg-[#EAEAEA]"}
                   `}
                 >
-                  <span className="font-medium">{session.title}</span>
+                  <span className="font-medium truncate" title={session.title}>
+                    {session.title.length > 26 ? session.title.slice(0, 26) + '…' : session.title}
+                  </span>
                 </a>
               );
             })}
@@ -111,14 +113,14 @@ export default function Sidebar() {
         )}
 
         {/* FOOTER — FIXED: Gear inset consistently */}
-        <div className="mt-auto px-3 py-4 border-t border-[#E5E5E5]">
-          <div className="flex items-center">
-            {sidebarOpen && <div className="text-sm text-[#1A1A1A] mr-auto">Alex</div>}
-            <button className="p-2 rounded-lg hover:bg-[#EAEAEA] transition">
-              <Cog6ToothIcon className="w-5 h-5 text-[#606060]" />
-            </button>
-          </div>
-        </div>
+        <div className="mt-auto px-3 border-t border-[#E5E5E5] h-[83px]">
+          <div className="h-full flex items-center justify-between">
+           {sidebarOpen && <div className="text-sm text-[#1A1A1A]">Alex</div>}
+          <button className="p-2 rounded-lg hover:bg-[#EAEAEA] transition">
+          <Cog6ToothIcon className="w-5 h-5 text-[#606060]" />
+    </button>
+  </div>
+</div>
       </aside>
 
       {/* FLOATING TEXT WHEN COLLAPSED */}

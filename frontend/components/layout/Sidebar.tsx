@@ -79,7 +79,7 @@ export default function Sidebar() {
             </span>
           </button>
         </div>
-
+        
         {/* SESSION HISTORY */}
         {sidebarOpen && (
           <div className="flex-1 overflow-y-auto px-3 py-2">
@@ -103,15 +103,16 @@ export default function Sidebar() {
                       : "bg-transparent text-[#1A1A1A] hover:bg-[#EAEAEA]"}
                   `}
                 >
-                  <span className="font-medium truncate" title={session.title}>
-                    {session.title.length > 26 ? session.title.slice(0, 26) + '…' : session.title}
+                  <span className="font-medium truncate">
+                  {session.title.length > 26 ? session.title.slice(0, 26) + '…' : session.title}
                   </span>
                 </a>
               );
             })}
           </div>
         )}
-
+        
+        
         {/* FOOTER — FIXED: Gear inset consistently */}
         <div className="mt-auto px-3 border-t border-[#E5E5E5] h-[83px]">
           <div className="h-full flex items-center justify-between">

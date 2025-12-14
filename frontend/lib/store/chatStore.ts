@@ -82,7 +82,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (state.pendingSession) {
         const sessionWithTitle = {
           ...state.pendingSession,
-          title: content.slice(0, 30) + (content.length > 30 ? "..." : ""),
+          title: content,
           messages: updatedMessages,
         };
         
@@ -99,7 +99,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const newId = `session-${Date.now()}`;
         const newSession: Session = {
           id: newId,
-          title: content.slice(0, 30) + (content.length > 30 ? "..." : ""),
+          title: content,
           messages: updatedMessages,
         };
         

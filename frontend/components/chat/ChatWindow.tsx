@@ -9,7 +9,7 @@ export default function ChatWindow() {
   const { messages } = useChatStore();
 
   return (
-    <div className="flex-1 overflow-y-auto bg-white">
+    <div className="flex-1 overflow-y-auto bg-white pt-12">
       <div className="max-w-4xl mx-auto p-6"> {/* NEW container to match InputBar */}
         
         {messages.length === 0 && (

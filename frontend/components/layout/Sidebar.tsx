@@ -1,9 +1,10 @@
-//components/layout/SideBar.tsx
+// components/layout/Sidebar.tsx
 "use client";
 import { useUIStore } from "../../lib/store/uiStore";
 import { useChatStore } from "../../lib/store/chatStore";
-import { Bars3Icon, Cog6ToothIcon } from "@heroicons/react/24/outline";
-import { useEffect } from "react";
+import { Bars3Icon, Cog6ToothIcon, EllipsisVerticalIcon } from "@heroicons/react/24/outline";
+import { useEffect, useState } from "react";
+import SessionActionsDropdown from "../chat/SessionActionsDropdown";
 
 export default function Sidebar() {
   const { sidebarOpen, toggleSidebar, centerInput, dockInput } = useUIStore();
@@ -19,11 +20,26 @@ export default function Sidebar() {
     selectSession(id);
   };
 
+  const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
+  const [dropdownSessionId, setDropdownSessionId] = useState<string | null>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, right: 0 });
+
+  const handleMoreOptions = (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    const button = e.currentTarget;
+    const rect = button.getBoundingClientRect();
+  
+    setDropdownPosition({
+      top: rect.bottom + window.scrollY + 4,
+      right: window.innerWidth - rect.right - window.scrollX + 4 - 25, // ← moved 25px right
+    });
+    setDropdownSessionId(sessionId);
+  };
+
+  // Close dropdown when sidebar state or session changes
   useEffect(() => {
-    if (currentSessionId) {
-      dockInput();
-    }
-  }, [currentSessionId, dockInput]);
+    setDropdownSessionId(null);
+  }, [sidebarOpen, currentSessionId]);
 
   return (
     <div className="relative flex h-full">
@@ -88,43 +104,78 @@ export default function Sidebar() {
             )}
             {sessions.map((session) => {
               const isActive = session.id === currentSessionId;
+              const isHovered = hoveredSessionId === session.id;
+              const showDots = isActive || isHovered;
+              const isTruncated = session.title.length > 22;
+              const displayTitle = isTruncated
+                ? session.title.slice(0, 22) + "…"
+                : session.title;
+
               return (
-                <a
+                <div
                   key={session.id}
-                  onClick={() => selectSession(session.id)}
                   className={`
-                    block cursor-pointer
-                    px-3 py-2.5 text-sm
-                    rounded-xl
                     flex items-center
+                    rounded-xl
                     transition-colors duration-200
                     ${isActive 
-                      ? "bg-[#e4edfd] text-blue-700"
-                      : "bg-transparent text-[#1A1A1A] hover:bg-[#EAEAEA]"}
+                      ? "bg-[#e4edfd]" 
+                      : "bg-transparent"}
+                    ${!isActive && "hover:bg-[#EAEAEA]"}
                   `}
+                  onMouseEnter={() => setHoveredSessionId(session.id)}
+                  onMouseLeave={() => setHoveredSessionId(null)}
                 >
-                  <span className="font-medium truncate">
-                  {session.title.length > 26 ? session.title.slice(0, 26) + '…' : session.title}
-                  </span>
-                </a>
+                  <a
+                    onClick={() => selectSession(session.id)}
+                    className={`
+                      block cursor-pointer
+                      px-3 py-2.5 text-sm
+                      flex items-center
+                      min-w-0
+                      flex-1
+                      ${isActive ? "text-blue-700" : "text-[#1A1A1A]"}
+                    `}
+                  >
+                    <span 
+                      className="font-medium truncate"
+                      title={isTruncated ? session.title : undefined}
+                    >
+                      {displayTitle}
+                    </span>
+                  </a>
+                  
+                  {showDots && (
+                    <button
+                      onClick={(e) => handleMoreOptions(e, session.id)}
+                      className={`
+                        p-1.5
+                        ${isActive ? "text-blue-700" : "text-[#606060]"}
+                        transition-colors duration-150
+                      `}
+                      aria-label="More options"
+                    >
+                      <EllipsisVerticalIcon className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
         )}
         
-        
-        {/* FOOTER — FIXED: Gear inset consistently */}
+        {/* FOOTER */}
         <div className="mt-auto px-3 border-t border-[#E5E5E5] h-[83px]">
           <div className="h-full flex items-center justify-between">
-           {sidebarOpen && <div className="text-sm text-[#1A1A1A]">Alex</div>}
-          <button className="p-2 rounded-lg hover:bg-[#EAEAEA] transition">
-          <Cog6ToothIcon className="w-5 h-5 text-[#606060]" />
-    </button>
-  </div>
-</div>
+            {sidebarOpen && <div className="text-sm text-[#1A1A1A]">Alex</div>}
+            <button className="p-2 rounded-lg hover:bg-[#EAEAEA] transition">
+              <Cog6ToothIcon className="w-5 h-5 text-[#606060]" />
+            </button>
+          </div>
+        </div>
       </aside>
 
-      {/* FLOATING TEXT WHEN COLLAPSED */}
+      {/* FLOATING DEBUGFLOW LOGO WHEN SIDEBAR IS CLOSED */}
       {!sidebarOpen && (
         <div
           className="
@@ -135,6 +186,14 @@ export default function Sidebar() {
         >
           DebugFlow
         </div>
+      )}
+
+      {/* SESSION ACTIONS DROPDOWN — BELOW THE THREE DOTS */}
+      {dropdownSessionId && (
+        <SessionActionsDropdown
+          position={dropdownPosition}
+          onClose={() => setDropdownSessionId(null)}
+        />
       )}
     </div>
   );

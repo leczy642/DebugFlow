@@ -14,6 +14,7 @@
 //  - sendMessage: Adds user message to active session * 
 // - receiveMessage: Adds assistant message to active session */
 // lib/store/chatStore.ts
+// lib/store/chatStore.ts
 import { create } from "zustand";
 
 type Message = {
@@ -25,18 +26,24 @@ type Session = {
   id: string;
   title: string;
   messages: Message[];
+  pinned?: boolean; // optional, defaults to false
 };
 
 type ChatStore = {
   sessions: Session[];
   currentSessionId: string | null;
   messages: Message[];
-  pendingSession: Session | null; // New: holds session before first message
-  
+  pendingSession: Session | null;
+  lastUpdatedSessionId: string | null;
+
   startNewSession: () => void;
   selectSession: (id: string) => void;
   sendMessage: (content: string) => void;
   receiveMessage: (content: string) => void;
+  renameSession: (id: string, newTitle: string) => void;
+  pinSession: (id: string) => void;          // toggles pin state
+  unpinSession: (id: string) => void;        // explicit unpin (optional but clean)
+  deleteSession: (id: string) => void;       // 👈 NEW
 };
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -44,6 +51,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   currentSessionId: null,
   messages: [],
   pendingSession: null,
+  lastUpdatedSessionId: null,
 
   startNewSession: () => {
     const newId = `session-${Date.now()}`;
@@ -53,7 +61,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       messages: [],
     };
     
-    // Store as pending session, don't add to history yet
     set({
       pendingSession: newSession,
       currentSessionId: null,
@@ -67,7 +74,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({
         currentSessionId: id,
         messages: session.messages,
-        pendingSession: null, // Clear pending session when selecting existing one
+        pendingSession: null,
       });
     }
   },
@@ -78,54 +85,88 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set((state) => {
       const updatedMessages = [...state.messages, userMessage];
       
-      // If there's a pending session, add it to history now
       if (state.pendingSession) {
         const sessionWithTitle = {
           ...state.pendingSession,
           title: content,
           messages: updatedMessages,
+          pinned: false,
         };
         
+        // Sort: pinned first, then by insertion order (newest first)
+        const pinnedSessions = state.sessions.filter(s => s.pinned);
+        const unpinnedSessions = state.sessions.filter(s => !s.pinned);
+        
         return {
-          sessions: [sessionWithTitle, ...state.sessions],
+          sessions: [...pinnedSessions, sessionWithTitle, ...unpinnedSessions],
           currentSessionId: sessionWithTitle.id,
           messages: updatedMessages,
           pendingSession: null,
         };
       }
       
-      // If no current session and no pending session, create new one
       if (!state.currentSessionId) {
         const newId = `session-${Date.now()}`;
         const newSession: Session = {
           id: newId,
           title: content,
           messages: updatedMessages,
+          pinned: false,
         };
         
+        const pinnedSessions = state.sessions.filter(s => s.pinned);
+        const unpinnedSessions = state.sessions.filter(s => !s.pinned);
+        
         return {
-          sessions: [newSession, ...state.sessions],
+          sessions: [...pinnedSessions, newSession, ...unpinnedSessions],
           currentSessionId: newId,
           messages: updatedMessages,
           pendingSession: null,
         };
       }
       
-      // Update existing session
-      const updatedSessions = state.sessions.map((session) =>
-        session.id === state.currentSessionId
-          ? { 
-              ...session, 
-              messages: updatedMessages,
-            }
-          : session
-      );
-      
-      return {
-        sessions: updatedSessions,
+      // Update existing session and move to top of unpinned sessions
+      const sessionToUpdate = state.sessions.find(s => s.id === state.currentSessionId);
+      if (!sessionToUpdate) {
+        return {
+          sessions: state.sessions,
+          messages: updatedMessages,
+          pendingSession: null,
+        };
+      }
+
+      const updatedSession = {
+        ...sessionToUpdate,
         messages: updatedMessages,
-        pendingSession: null,
       };
+
+      // Remove the session from its current position
+      const otherSessions = state.sessions.filter(s => s.id !== state.currentSessionId);
+      
+      // Separate pinned and unpinned sessions
+      const pinnedSessions = otherSessions.filter(s => s.pinned);
+      const unpinnedSessions = otherSessions.filter(s => !s.pinned);
+      
+      // If the updated session is not pinned, move it to the top of unpinned sessions
+      if (!updatedSession.pinned) {
+        // mark recently-updated session for UI animation, clear shortly after
+        setTimeout(() => set({ lastUpdatedSessionId: null }), 350);
+        return {
+          sessions: [...pinnedSessions, updatedSession, ...unpinnedSessions],
+          lastUpdatedSessionId: updatedSession.id,
+          messages: updatedMessages,
+          pendingSession: null,
+        };
+      } else {
+        // If pinned, keep it in pinned section but at the top
+        setTimeout(() => set({ lastUpdatedSessionId: null }), 350);
+        return {
+          sessions: [updatedSession, ...pinnedSessions.filter(s => s.id !== updatedSession.id), ...unpinnedSessions],
+          lastUpdatedSessionId: updatedSession.id,
+          messages: updatedMessages,
+          pendingSession: null,
+        };
+      }
     });
   },
 
@@ -135,15 +176,126 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set((state) => {
       const updatedMessages = [...state.messages, assistantMessage];
       
-      const updatedSessions = state.sessions.map((session) =>
-        session.id === state.currentSessionId
-          ? { ...session, messages: updatedMessages }
-          : session
-      );
+      // Update existing session and move to top of unpinned sessions
+      const sessionToUpdate = state.sessions.find(s => s.id === state.currentSessionId);
+      if (!sessionToUpdate) {
+        return {
+          sessions: state.sessions,
+          messages: updatedMessages,
+        };
+      }
+
+      const updatedSession = {
+        ...sessionToUpdate,
+        messages: updatedMessages,
+      };
+
+      // Remove the session from its current position
+      const otherSessions = state.sessions.filter(s => s.id !== state.currentSessionId);
       
+      // Separate pinned and unpinned sessions
+      const pinnedSessions = otherSessions.filter(s => s.pinned);
+      const unpinnedSessions = otherSessions.filter(s => !s.pinned);
+      
+      // If the updated session is not pinned, move it to the top of unpinned sessions
+      if (!updatedSession.pinned) {
+        // mark recently-updated session for UI animation, clear shortly after
+        setTimeout(() => set({ lastUpdatedSessionId: null }), 350);
+        return {
+          sessions: [...pinnedSessions, updatedSession, ...unpinnedSessions],
+          lastUpdatedSessionId: updatedSession.id,
+          messages: updatedMessages,
+        };
+      } else {
+        // If pinned, keep it in pinned section but at the top
+        setTimeout(() => set({ lastUpdatedSessionId: null }), 350);
+        return {
+          sessions: [updatedSession, ...pinnedSessions.filter(s => s.id !== updatedSession.id), ...unpinnedSessions],
+          lastUpdatedSessionId: updatedSession.id,
+          messages: updatedMessages,
+        };
+      }
+    });
+  },
+
+  renameSession: (id: string, newTitle: string) => {
+    set((state) => {
+      const trimmedTitle = newTitle.trim();
+      if (!trimmedTitle) return state;
+
+      const updatedSessions = state.sessions.map((session) =>
+        session.id === id ? { ...session, title: trimmedTitle } : session
+      );
+
+      const updatedPending =
+        state.pendingSession && state.pendingSession.id === id
+          ? { ...state.pendingSession, title: trimmedTitle }
+          : state.pendingSession;
+
+      return {
+        ...state,
+        sessions: updatedSessions,
+        pendingSession: updatedPending,
+      };
+    });
+  },
+
+  pinSession: (id: string) => {
+    set((state) => {
+      const updatedSessions = state.sessions.map((s) =>
+        s.id === id ? { ...s, pinned: true } : s
+      );
+
+      const pinnedSessions = updatedSessions.filter(s => s.pinned);
+      const unpinnedSessions = updatedSessions.filter(s => !s.pinned);
+
+      return {
+        ...state,
+        sessions: [...pinnedSessions, ...unpinnedSessions],
+      };
+    });
+  },
+
+  unpinSession: (id: string) => {
+    set((state) => {
+      const updatedSessions = state.sessions.map((s) =>
+        s.id === id ? { ...s, pinned: false } : s
+      );
+
+      const pinnedSessions = updatedSessions.filter(s => s.pinned);
+      const unpinnedSessions = updatedSessions.filter(s => !s.pinned);
+
+      return {
+        ...state,
+        sessions: [...pinnedSessions, ...unpinnedSessions],
+      };
+    });
+  },
+
+  //NEW: Delete session with cleanup
+  deleteSession: (id: string) => {
+    set((state) => {
+      // Remove session
+      const updatedSessions = state.sessions.filter((s) => s.id !== id);
+      
+      // Handle current session deletion
+      let newCurrentSessionId = state.currentSessionId;
+      let newMessages: Message[] = state.messages;
+      
+      if (state.currentSessionId === id) {
+        // Select first available session
+        newCurrentSessionId = updatedSessions.length > 0 ? updatedSessions[0].id : null;
+        newMessages = newCurrentSessionId 
+          ? updatedSessions.find(s => s.id === newCurrentSessionId)?.messages || []
+          : [];
+      }
+
       return {
         sessions: updatedSessions,
-        messages: updatedMessages,
+        currentSessionId: newCurrentSessionId,
+        messages: newMessages,
+        // Clean up pending session if it's the one being deleted
+        pendingSession: state.pendingSession?.id === id ? null : state.pendingSession,
       };
     });
   },

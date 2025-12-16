@@ -1,15 +1,35 @@
 // components/layout/Sidebar.tsx
+// components/layout/Sidebar.tsx
 "use client";
 import { useUIStore } from "../../lib/store/uiStore";
 import { useChatStore } from "../../lib/store/chatStore";
-import { Bars3Icon, Cog6ToothIcon, EllipsisVerticalIcon } from "@heroicons/react/24/outline";
+import {
+  Bars3Icon,
+  Cog6ToothIcon,
+  EllipsisVerticalIcon,
+  BookmarkIcon,
+} from "@heroicons/react/24/outline";
+import {
+  BookmarkIcon as BookmarkIconSolid,
+} from "@heroicons/react/24/solid";
 import { useEffect, useState } from "react";
 import SessionActionsDropdown from "../chat/SessionActionsDropdown";
+import RenameSessionModal from "../chat/RenameSessionModal";
+import DeleteSessionModal from "../chat/DeleteSessionModal";
 
 export default function Sidebar() {
   const { sidebarOpen, toggleSidebar, centerInput, dockInput } = useUIStore();
-  const { sessions, startNewSession, selectSession, currentSessionId } =
-    useChatStore();
+  const {
+    sessions,
+    startNewSession,
+    selectSession,
+    currentSessionId,
+    renameSession,
+    pinSession,
+    unpinSession,
+    deleteSession,
+    lastUpdatedSessionId,
+  } = useChatStore();
 
   const handleNewSession = () => {
     startNewSession();
@@ -22,24 +42,84 @@ export default function Sidebar() {
 
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
   const [dropdownSessionId, setDropdownSessionId] = useState<string | null>(null);
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, right: 0 });
+  const [dropdownPosition, setDropdownPosition] = useState({ 
+    top: 0, 
+    right: 0, 
+    above: false 
+  });
+  const [renameModal, setRenameModal] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
 
   const handleMoreOptions = (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
     const button = e.currentTarget;
     const rect = button.getBoundingClientRect();
-  
+    
+    // Estimate dropdown height (5 items + padding + borders ≈ 170px)
+    const estimatedDropdownHeight = 170;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const gap = 4; // Gap between button and dropdown
+    
+    // Position above if there's not enough space below AND there's more space above
+    const shouldPositionAbove = spaceBelow < estimatedDropdownHeight + gap && spaceAbove >= estimatedDropdownHeight + gap;
+
     setDropdownPosition({
-      top: rect.bottom + window.scrollY + 4,
-      right: window.innerWidth - rect.right - window.scrollX + 4 - 25, // ← moved 25px right
+      top: shouldPositionAbove 
+        ? rect.top + window.scrollY - estimatedDropdownHeight - gap
+        : rect.bottom + window.scrollY + gap,
+      right: window.innerWidth - rect.right - window.scrollX + gap - 25,
+      above: shouldPositionAbove,
     });
     setDropdownSessionId(sessionId);
   };
 
-  // Close dropdown when sidebar state or session changes
+  const handleRenameFromDropdown = (sessionId: string) => {
+    const session = sessions.find((s) => s.id === sessionId);
+    if (session) {
+      setRenameModal({ id: sessionId, title: session.title });
+    }
+    setDropdownSessionId(null);
+  };
+
+  const handleRenameConfirm = (newTitle: string) => {
+    if (renameModal) {
+      renameSession(renameModal.id, newTitle);
+    }
+    setRenameModal(null);
+  };
+
+  const handleDeleteFromDropdown = (sessionId: string) => {
+    const session = sessions.find((s) => s.id === sessionId);
+    if (session) {
+      setDeleteModal({ id: sessionId, title: session.title });
+    }
+    setDropdownSessionId(null);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (deleteModal) {
+      deleteSession(deleteModal.id);
+    }
+    setDeleteModal(null);
+  };
+
   useEffect(() => {
     setDropdownSessionId(null);
   }, [sidebarOpen, currentSessionId]);
+
+  // Dock the input bar when an existing session is selected
+  useEffect(() => {
+    if (currentSessionId) {
+      dockInput();
+    }
+  }, [currentSessionId, dockInput]);
 
   return (
     <div className="relative flex h-full">
@@ -52,15 +132,17 @@ export default function Sidebar() {
       >
         {/* HEADER */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#E5E5E5]">
-          <span
+          <button
+            onClick={handleNewSession}
             className={`
               font-semibold text-[15px] text-[#1A1A1A] tracking-wide
               transition-all duration-200
+              cursor-pointer hover:opacity-70
               ${sidebarOpen ? "opacity-100" : "opacity-0 w-0 overflow-hidden"}
             `}
           >
             DebugFlow
-          </span>
+          </button>
           <button
             onClick={toggleSidebar}
             className="p-2 rounded-lg hover:bg-[#EAEAEA] transition"
@@ -95,7 +177,7 @@ export default function Sidebar() {
             </span>
           </button>
         </div>
-        
+
         {/* SESSION HISTORY */}
         {sidebarOpen && (
           <div className="flex-1 overflow-y-auto px-3 py-2">
@@ -105,7 +187,9 @@ export default function Sidebar() {
             {sessions.map((session) => {
               const isActive = session.id === currentSessionId;
               const isHovered = hoveredSessionId === session.id;
+              const isRecentlyUpdated = session.id === lastUpdatedSessionId;
               const showDots = isActive || isHovered;
+              const isPinned = session.pinned || false;
               const isTruncated = session.title.length > 22;
               const displayTitle = isTruncated
                 ? session.title.slice(0, 22) + "…"
@@ -118,14 +202,34 @@ export default function Sidebar() {
                     flex items-center
                     rounded-xl
                     transition-colors duration-200
-                    ${isActive 
-                      ? "bg-[#e4edfd]" 
+                    ${isActive
+                      ? "bg-[#e4edfd]"
                       : "bg-transparent"}
                     ${!isActive && "hover:bg-[#EAEAEA]"}
+                    ${isRecentlyUpdated ? " session-enter" : ""}
                   `}
                   onMouseEnter={() => setHoveredSessionId(session.id)}
                   onMouseLeave={() => setHoveredSessionId(null)}
                 >
+                  {/* Pin Icon - clickable to unpin */}
+                  {isPinned && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        unpinSession(session.id);
+                      }}
+                      className={`
+                        p-1.5 mr-1
+                        ${isActive ? "text-blue-700" : "text-[#606060]"}
+                        hover:bg-[#EAEAEA] rounded
+                        transition-colors duration-150
+                      `}
+                      aria-label="Unpin session"
+                    >
+                      <BookmarkIconSolid className="w-4 h-4" />
+                    </button>
+                  )}
+                  
                   <a
                     onClick={() => selectSession(session.id)}
                     className={`
@@ -137,14 +241,14 @@ export default function Sidebar() {
                       ${isActive ? "text-blue-700" : "text-[#1A1A1A]"}
                     `}
                   >
-                    <span 
+                    <span
                       className="font-medium truncate"
                       title={isTruncated ? session.title : undefined}
                     >
                       {displayTitle}
                     </span>
                   </a>
-                  
+
                   {showDots && (
                     <button
                       onClick={(e) => handleMoreOptions(e, session.id)}
@@ -163,7 +267,7 @@ export default function Sidebar() {
             })}
           </div>
         )}
-        
+
         {/* FOOTER */}
         <div className="mt-auto px-3 border-t border-[#E5E5E5] h-[83px]">
           <div className="h-full flex items-center justify-between">
@@ -177,22 +281,51 @@ export default function Sidebar() {
 
       {/* FLOATING DEBUGFLOW LOGO WHEN SIDEBAR IS CLOSED */}
       {!sidebarOpen && (
-        <div
+        <button
+          onClick={handleNewSession}
           className="
             absolute top-3 left-20
             text-[15px] font-semibold text-[#1A1A1A]
             tracking-wide transition-opacity duration-300
+            cursor-pointer hover:opacity-70
           "
         >
           DebugFlow
-        </div>
+        </button>
       )}
 
-      {/* SESSION ACTIONS DROPDOWN — BELOW THE THREE DOTS */}
-      {dropdownSessionId && (
-        <SessionActionsDropdown
-          position={dropdownPosition}
-          onClose={() => setDropdownSessionId(null)}
+      {/* ✅ SAFE: Only render dropdown when sessionId is not null */}
+      {dropdownSessionId && (() => {
+        const session = sessions.find(s => s.id === dropdownSessionId);
+        return (
+          <SessionActionsDropdown
+            sessionId={dropdownSessionId}
+            position={dropdownPosition}
+            onClose={() => setDropdownSessionId(null)}
+            onRename={handleRenameFromDropdown}
+            onPin={pinSession}
+            onUnpin={unpinSession}
+            onDelete={handleDeleteFromDropdown}
+            isPinned={session?.pinned || false}
+          />
+        );
+      })()}
+
+      {/* RENAME MODAL */}
+      {renameModal && (
+        <RenameSessionModal
+          currentTitle={renameModal.title}
+          onClose={() => setRenameModal(null)}
+          onConfirm={handleRenameConfirm}
+        />
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {deleteModal && (
+        <DeleteSessionModal
+          sessionTitle={deleteModal.title}
+          onClose={() => setDeleteModal(null)}
+          onConfirm={handleDeleteConfirm}
         />
       )}
     </div>

@@ -4,3 +4,19 @@
 
 html, body, #__next { height: 100%; }
 body { @apply bg-gray-50 text-gray-900; }
+
+/* Session list item entry animation: matches InputBar's 300ms easing */
+@keyframes sessionEnter {
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.session-enter {
+	animation: sessionEnter 300ms cubic-bezier(.22,.9,.31,1) both;
+}

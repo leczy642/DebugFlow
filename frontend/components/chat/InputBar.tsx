@@ -10,6 +10,15 @@ export default function InputBar() {
   const { sendMessage, receiveMessage } = useChatStore();
   const { inputBarCentered, dockInput, sidebarOpen } = useUIStore();
 
+  const scrollToBottom = () => {
+    const el = typeof document !== "undefined" ? document.getElementById("chat-bottom-sentinel") : null;
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+  };
+
+  
+
   const handleSend = () => {
     if (!text.trim()) return;
     
@@ -42,6 +51,9 @@ export default function InputBar() {
         }}
       >
         <div className="max-w-4xl mx-auto px-4">
+          <h1 className="text-gray-500 text-3xl font-medium text-center mb-6">
+            Start a new debug session.
+          </h1>
           <div className="relative">
             <input
               className="w-full border border-gray-300 rounded-xl py-3 pl-4 pr-12 bg-gray-50
@@ -69,6 +81,7 @@ export default function InputBar() {
   // Docked mode: with container at bottom
   return (
     <div className="p-4 border-t bg-white">
+      {/* (scroll-to-bottom icon removed) */}
       <div className="relative max-w-4xl mx-auto">
         <input
           className="w-full border border-gray-300 rounded-xl py-3 pl-4 pr-12 bg-gray-50

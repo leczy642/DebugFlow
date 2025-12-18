@@ -35,6 +35,7 @@ type ChatStore = {
   messages: Message[];
   pendingSession: Session | null;
   lastUpdatedSessionId: string | null;
+  awaitingResponse: boolean;
 
   startNewSession: () => void;
   selectSession: (id: string) => void;
@@ -52,6 +53,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   pendingSession: null,
   lastUpdatedSessionId: null,
+  awaitingResponse: false,
 
   startNewSession: () => {
     const newId = `session-${Date.now()}`;
@@ -81,7 +83,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   sendMessage: (content: string) => {
     const userMessage: Message = { role: "user", content };
-    
+    // Ensure UI shows loading state immediately
+    set({ awaitingResponse: true });
+
     set((state) => {
       const updatedMessages = [...state.messages, userMessage];
       
@@ -102,6 +106,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           currentSessionId: sessionWithTitle.id,
           messages: updatedMessages,
           pendingSession: null,
+          awaitingResponse: true,
         };
       }
       
@@ -122,6 +127,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           currentSessionId: newId,
           messages: updatedMessages,
           pendingSession: null,
+          awaitingResponse: true,
         };
       }
       
@@ -156,6 +162,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           lastUpdatedSessionId: updatedSession.id,
           messages: updatedMessages,
           pendingSession: null,
+          awaitingResponse: true,
         };
       } else {
         // If pinned, keep it in pinned section but at the top
@@ -165,6 +172,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           lastUpdatedSessionId: updatedSession.id,
           messages: updatedMessages,
           pendingSession: null,
+          awaitingResponse: true,
         };
       }
     });
@@ -182,6 +190,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         return {
           sessions: state.sessions,
           messages: updatedMessages,
+          awaitingResponse: false,
         };
       }
 
@@ -205,6 +214,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           sessions: [...pinnedSessions, updatedSession, ...unpinnedSessions],
           lastUpdatedSessionId: updatedSession.id,
           messages: updatedMessages,
+          awaitingResponse: false,
         };
       } else {
         // If pinned, keep it in pinned section but at the top
@@ -213,6 +223,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           sessions: [updatedSession, ...pinnedSessions.filter(s => s.id !== updatedSession.id), ...unpinnedSessions],
           lastUpdatedSessionId: updatedSession.id,
           messages: updatedMessages,
+          awaitingResponse: false,
         };
       }
     });

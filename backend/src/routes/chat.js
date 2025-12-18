@@ -37,20 +37,25 @@ router.post('/', async (req, res) => {
     }
     
     // Normalize and sanitize user query
-    const normalizedMessage = normalizeUserQuery(message);
+    // const normalizedMessage = normalizeUserQuery(message);
     
-    // Check if normalization succeeded
-    if (!normalizedMessage.ok) {
-      logger.warn('Query failed normalization', { message });
-      return res.status(400).json({ 
-        success: false, 
-        error: normalizedMessage.error 
-      });
-    }
+    // // Check if normalization succeeded
+    // if (!normalizedMessage.ok) {
+    //   logger.warn('Query failed normalization', { message });
+    //   return res.status(400).json({ 
+    //     success: false, 
+    //     error: normalizedMessage.error 
+    //   });
+    // }
     
     // Call AI service with timeout and retry logic
+    // const reply = await withTimeout(
+    //   () => retryWithBackoff(() => chatWithAI(normalizedMessage.query)), 
+    //   LLM_CHAT_TIMEOUT_MS
+    // );
+
     const reply = await withTimeout(
-      () => retryWithBackoff(() => chatWithAI(normalizedMessage.query)), 
+      () => retryWithBackoff(() => chatWithAI(message)), 
       LLM_CHAT_TIMEOUT_MS
     );
     

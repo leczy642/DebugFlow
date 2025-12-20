@@ -78,9 +78,14 @@ export default function InputBar() {
             Start a new debug session.
           </h1>
           <div className="relative">
-            <input
-              className="w-full border border-gray-300 rounded-xl py-3 pl-4 pr-12 bg-gray-50
-                         focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-lg"
+            <textarea
+             className="w-full min-h-[100px] max-h-40 resize-none 
+             border border-gray-300 rounded-xl 
+             py-3 px-4 bg-gray-50 
+             focus:outline-none focus:ring-2 focus:ring-blue-500 
+             shadow-sm transition-shadow duration-200
+             placeholder:text-gray-500 text-gray-800
+             font-sans text-sm"
               placeholder="Ask something… paste logs… describe an error…"
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -89,7 +94,7 @@ export default function InputBar() {
             <button
               onClick={handleSend}
               disabled={!text.trim()}
-              className="absolute right-2 top-1/2 -translate-y-1/2 
+              className="absolute right-2 bottom-0 -translate-y-1/2 
                          bg-blue-600 text-white p-2 rounded-lg 
                          hover:bg-blue-700 disabled:bg-gray-300 transition-colors"
             >

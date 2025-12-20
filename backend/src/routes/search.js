@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { embedLogsCohere } from "../services/embedLogsCohere.js";
-import { getPineconeIndex } from "../db/connect.js";
+import { getPineconeIndex } from "../db/pinecone_connect.js";
 import { Claude } from "@anthropic-ai/sdk";
 import dotenv from "dotenv";
 

@@ -39,6 +39,7 @@ import { requestLogger } from './middleware/requestLogger.js';
 import ingestRouter from './routes/ingest.js';
 import analyzeRouter from './routes/analyze.js';
 import chatRouter from './routes/chat.js';
+import sessionsRouter from './routes/sessions.js';
 
 // Load environment variables
 dotenv.config();
@@ -64,6 +65,7 @@ app.get('/health', (req, res) => {
 app.use('/api/ingest', ingestRouter);
 app.use('/api/analyze', analyzeRouter);
 app.use('/api/chat', chatRouter);
+app.use("/sessions", sessionsRouter);
 
 // Global error handler (must be last)
 app.use(errorHandler(logger));

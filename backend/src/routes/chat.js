@@ -18,6 +18,7 @@ import { chatWithAI } from '../services/chatService.js';
 import { normalizeUserQuery } from '../utils/promptValidator.js';
 import { retryWithBackoff } from '../utils/retry.js';
 import { withTimeout } from '../utils/withTimeout.js';
+import { addMessage } from '../db/models/postgres_session_queries.js';
 
 const router = express.Router();
 
@@ -27,7 +28,7 @@ router.post('/', async (req, res) => {
     const LLM_CHAT_TIMEOUT_MS = Number(process.env.HUGGINGFACE_CHAT_TIMEOUT_MS || 8000);
     
     // Extract message from request body
-    const { message } = req.body;
+    const { sessionId, message } = req.body;
     
     // Validate message is a non-empty string
     if (!message || typeof message !== "string") {
@@ -35,6 +36,8 @@ router.post('/', async (req, res) => {
         error: "Invalid parameter: prompt must be a string"
       });
     }
+    // Save user message to session if sessionId is provided
+      await addMessage(sessionId, 'user', message);
     
     // Normalize and sanitize user query
     // const normalizedMessage = normalizeUserQuery(message);
@@ -54,11 +57,18 @@ router.post('/', async (req, res) => {
     //   LLM_CHAT_TIMEOUT_MS
     // );
 
+    //Todo:
+    //first we analyze the message to see if we can extract any relevant logs
+    //then we pass both the message and the relevant logs to the chat model to get a response 
+
+    
     const reply = await withTimeout(
       () => retryWithBackoff(() => chatWithAI(message)), 
       LLM_CHAT_TIMEOUT_MS
     );
-    
+    // Save AI reply
+    await addMessage(sessionId, "assistant", reply);
+
     // Return successful response
     return res.status(200).json({
       success: true,

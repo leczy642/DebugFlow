@@ -12,75 +12,89 @@
  *   Error (500): { success: false, error: string } - Server/AI error
  */
 
-import express from 'express';
-import { logger } from '../utils/logger.js';
-import { chatWithAI } from '../services/chatService.js';
-import { normalizeUserQuery } from '../utils/promptValidator.js';
-import { retryWithBackoff } from '../utils/retry.js';
-import { withTimeout } from '../utils/withTimeout.js';
-import { addMessage } from '../db/models/postgres_session_queries.js';
+import express from "express";
+import { logger } from "../utils/logger.js";
+import { chatWithAI } from "../services/chatService.js";
+import { retryWithBackoff } from "../utils/retry.js";
+import { withTimeout } from "../utils/withTimeout.js";
+import {
+  addMessage,
+  sessionExists,
+  withTransaction,
+} from "../db/models/postgres_session_queries.js";
 
 const router = express.Router();
 
-router.post('/', async (req, res) => {
+router.post("/", async (req, res) => {
+  const LLM_CHAT_TIMEOUT_MS = Number(
+    process.env.HUGGINGFACE_CHAT_TIMEOUT_MS || 8000
+  );
+
   try {
-    // Load timeout configuration from environment
-    const LLM_CHAT_TIMEOUT_MS = Number(process.env.HUGGINGFACE_CHAT_TIMEOUT_MS || 8000);
-    
-    // Extract message from request body
     const { sessionId, message } = req.body;
-    
-    // Validate message is a non-empty string
-    if (!message || typeof message !== "string") {
+
+    /* -----------------------------
+       VALIDATION
+    ----------------------------- */
+    if (!sessionId || typeof sessionId !== "string") {
       return res.status(400).json({
-        error: "Invalid parameter: prompt must be a string"
+        success: false,
+        error: "sessionId is required",
       });
     }
-    // Save user message to session if sessionId is provided
-      await addMessage(sessionId, 'user', message);
-    
-    // Normalize and sanitize user query
-    // const normalizedMessage = normalizeUserQuery(message);
-    
-    // // Check if normalization succeeded
-    // if (!normalizedMessage.ok) {
-    //   logger.warn('Query failed normalization', { message });
-    //   return res.status(400).json({ 
-    //     success: false, 
-    //     error: normalizedMessage.error 
-    //   });
-    // }
-    
-    // Call AI service with timeout and retry logic
-    // const reply = await withTimeout(
-    //   () => retryWithBackoff(() => chatWithAI(normalizedMessage.query)), 
-    //   LLM_CHAT_TIMEOUT_MS
-    // );
 
-    //Todo:
-    //first we analyze the message to see if we can extract any relevant logs
-    //then we pass both the message and the relevant logs to the chat model to get a response 
+    if (!message || typeof message !== "string" || !message.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "message must be a non-empty string",
+      });
+    }
 
-    
-    const reply = await withTimeout(
-      () => retryWithBackoff(() => chatWithAI(message)), 
-      LLM_CHAT_TIMEOUT_MS
-    );
-    // Save AI reply
-    await addMessage(sessionId, "assistant", reply);
+    /* -----------------------------
+       ENSURE SESSION EXISTS
+    ----------------------------- */
+    const exists = await sessionExists(sessionId);
+    if (!exists) {
+      return res.status(404).json({
+        success: false,
+        error: "Session not found",
+      });
+    }
 
-    // Return successful response
+    /* -----------------------------
+       TRANSACTION (USER + AI)
+    ----------------------------- */
+    const reply = await withTransaction(async (client) => {
+      // Save user message
+      await addMessage(sessionId, "user", message, client);
+
+      // 🔮 TODO: extract logs + retrieve context (RAG step)
+      // const relevantLogs = await retrieveRelevantLogs(message, sessionId);
+
+      // Call AI model
+      const aiReply = await withTimeout(
+        () => retryWithBackoff(() => chatWithAI(message)),
+        LLM_CHAT_TIMEOUT_MS
+      );
+
+      // Save assistant message
+      await addMessage(sessionId, "assistant", aiReply, client);
+
+      return aiReply;
+    });
+
     return res.status(200).json({
       success: true,
-      reply
+      reply,
     });
-    
   } catch (error) {
-    // Log error and return generic error response
-    logger.error('Chat error', { error });
+    logger.error("Chat error", {
+      error: error instanceof Error ? error.message : error,
+    });
+
     return res.status(500).json({
       success: false,
-      error: "No response from reasoning model"
+      error: "No response from reasoning model",
     });
   }
 });

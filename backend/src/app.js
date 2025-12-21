@@ -65,7 +65,8 @@ app.get('/health', (req, res) => {
 app.use('/api/ingest', ingestRouter);
 app.use('/api/analyze', analyzeRouter);
 app.use('/api/chat', chatRouter);
-app.use("/sessions", sessionsRouter);
+// Mount sessions under /api to match frontend expectations
+app.use("/api/sessions", sessionsRouter);
 
 // Global error handler (must be last)
 app.use(errorHandler(logger));

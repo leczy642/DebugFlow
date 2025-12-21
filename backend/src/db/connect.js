@@ -1,2 +1,2 @@
-export { getPinecone, getPineconeIndex } from "./pinecone_connect.js";
+//export { getPinecone, getPineconeIndex } from "./pinecone_connect.js";
 

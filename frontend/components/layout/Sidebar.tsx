@@ -36,6 +36,11 @@ export default function Sidebar() {
     centerInput();
   };
 
+  const handleHeaderClick = () => {
+    // Only center the input bar when header is clicked — do not start a new session
+    centerInput();
+  };
+
   const handleSelectSession = (id: string) => {
     selectSession(id);
   };
@@ -133,7 +138,7 @@ export default function Sidebar() {
         {/* HEADER */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#E5E5E5]">
           <button
-            onClick={handleNewSession}
+            onClick={handleHeaderClick}
             className={`
               font-semibold text-[15px] text-[#1A1A1A] tracking-wide
               transition-all duration-200

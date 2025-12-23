@@ -6,26 +6,53 @@ import { v4 as uuid } from "uuid";
 ----------------------------- */
 
 export async function getAllSessions() {
-  const { rows } = await pool.query(
-    `SELECT id, title, created_at, updated_at
-     FROM sessions
-     ORDER BY updated_at DESC`
-  );
-  return rows;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, title, pinned, created_at, updated_at
+       FROM sessions
+       ORDER BY updated_at DESC`
+    );
+    return rows;
+  } catch (err) {
+    // If the pinned column doesn't exist, add it and retry
+    if (err && err.code === "42703") {
+      await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS pinned boolean DEFAULT false`);
+      const { rows } = await pool.query(
+        `SELECT id, title, pinned, created_at, updated_at
+         FROM sessions
+         ORDER BY updated_at DESC`
+      );
+      return rows;
+    }
+    throw err;
+  }
 }
 
 export async function createSession() {
   const id = uuid();
   const title = "New Debug Session";
 
-  const { rows } = await pool.query(
-    `INSERT INTO sessions (id, title)
-     VALUES ($1, $2)
-     RETURNING id, title, created_at, updated_at`,
-    [id, title]
-  );
-
-  return rows[0];
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO sessions (id, title)
+       VALUES ($1, $2)
+       RETURNING id, title, pinned, created_at, updated_at`,
+      [id, title]
+    );
+    return rows[0];
+  } catch (err) {
+    if (err && err.code === "42703") {
+      await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS pinned boolean DEFAULT false`);
+      const { rows } = await pool.query(
+        `INSERT INTO sessions (id, title)
+         VALUES ($1, $2)
+         RETURNING id, title, pinned, created_at, updated_at`,
+        [id, title]
+      );
+      return rows[0];
+    }
+    throw err;
+  }
 }
 
 export async function sessionExists(sessionId) {
@@ -37,27 +64,111 @@ export async function sessionExists(sessionId) {
 }
 
 export async function getSessionWithMessages(sessionId) {
-  const sessionRes = await pool.query(
-    `SELECT id, title, created_at, updated_at
-     FROM sessions
-     WHERE id = $1`,
+  try {
+    const sessionRes = await pool.query(
+      `SELECT id, title, pinned, created_at, updated_at
+       FROM sessions
+       WHERE id = $1`,
+      [sessionId]
+    );
+
+    if (sessionRes.rowCount === 0) return null;
+
+    const messagesRes = await pool.query(
+      `SELECT role, content, created_at
+       FROM messages
+       WHERE session_id = $1
+       ORDER BY created_at ASC`,
+      [sessionId]
+    );
+
+    return {
+      ...sessionRes.rows[0],
+      messages: messagesRes.rows,
+    };
+  } catch (err) {
+    if (err && err.code === "42703") {
+      await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS pinned boolean DEFAULT false`);
+      const sessionRes = await pool.query(
+        `SELECT id, title, pinned, created_at, updated_at
+         FROM sessions
+         WHERE id = $1`,
+        [sessionId]
+      );
+
+      if (sessionRes.rowCount === 0) return null;
+
+      const messagesRes = await pool.query(
+        `SELECT role, content, created_at
+         FROM messages
+         WHERE session_id = $1
+         ORDER BY created_at ASC`,
+        [sessionId]
+      );
+
+      return {
+        ...sessionRes.rows[0],
+        messages: messagesRes.rows,
+      };
+    }
+    throw err;
+  }
+}
+
+export async function renameSession(sessionId, newTitle) {
+  const { rows } = await pool.query(
+    `UPDATE sessions
+     SET title = $2, updated_at = NOW()
+     WHERE id = $1
+     RETURNING id, title, created_at, updated_at`,
+    [sessionId, newTitle]
+  );
+
+  return rows[0];
+}
+
+export async function setSessionPinned(sessionId, pinned) {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE sessions
+       SET pinned = $2, updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, title, created_at, updated_at, pinned`,
+      [sessionId, pinned]
+    );
+
+    return rows[0];
+  } catch (err) {
+    // If the pinned column doesn't exist, attempt to add it and retry
+    // Postgres undefined column error code is 42703
+    if (err && err.code === "42703") {
+      await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS pinned boolean DEFAULT false`);
+      const { rows } = await pool.query(
+        `UPDATE sessions
+         SET pinned = $2, updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, title, created_at, updated_at, pinned`,
+        [sessionId, pinned]
+      );
+      return rows[0];
+    }
+    throw err;
+  }
+}
+
+export async function deleteSessionById(sessionId) {
+  // Remove messages first to avoid FK constraints
+  await pool.query(
+    `DELETE FROM messages WHERE session_id = $1`,
     [sessionId]
   );
 
-  if (sessionRes.rowCount === 0) return null;
-
-  const messagesRes = await pool.query(
-    `SELECT role, content, created_at
-     FROM messages
-     WHERE session_id = $1
-     ORDER BY created_at ASC`,
+  const { rows } = await pool.query(
+    `DELETE FROM sessions WHERE id = $1 RETURNING id`,
     [sessionId]
   );
 
-  return {
-    ...sessionRes.rows[0],
-    messages: messagesRes.rows,
-  };
+  return rows[0];
 }
 
 /* -----------------------------

@@ -91,7 +91,7 @@ export default function InputBar() {
   return (
     <div className="p-4 border-t bg-white">
       <div className="relative max-w-4xl mx-auto">
-        <input
+         <textarea
           className="w-full border border-gray-300 rounded-xl
                      py-3 pl-4 pr-12 bg-gray-50
                      focus:outline-none focus:ring-2 focus:ring-blue-500"

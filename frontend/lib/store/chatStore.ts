@@ -36,6 +36,9 @@ type ChatStore = {
   lastUpdatedSessionId: string | null;
   awaitingResponse: boolean;
 
+  // Reset UI/chat to default view (no active session, empty messages)
+  resetToDefault: () => void;
+
   loadSessions: () => Promise<void>;
   startNewSession: () => Promise<void>;
   selectSession: (id: string) => Promise<void>;
@@ -67,7 +70,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       sessions: sessions.map((s: any) => ({
         ...s,
         messages: [],
-        pinned: false,
+        pinned: typeof s.pinned === "boolean" ? s.pinned : false,
       })),
     });
   },
@@ -163,40 +166,103 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   /* -----------------------------
-     UI HELPERS (LOCAL ONLY)
+     UI HELPERS (LOCAL ONLY) with optimistic server persistence
   ----------------------------- */
   renameSession: (id, newTitle) =>
-    set((state) => ({
-      sessions: state.sessions.map((s) =>
-        s.id === id ? { ...s, title: newTitle.trim() } : s
-      ),
-    })),
+    // Optimistic update: update UI immediately, persist to server, rollback on failure
+    (async (id: string, newTitle: string) => {
+      const prev = get().sessions;
+      const trimmed = newTitle.trim();
+      set((state) => ({
+        sessions: state.sessions.map((s) =>
+          s.id === id ? { ...s, title: trimmed } : s
+        ),
+      }));
+
+      try {
+        const res = await fetch(`http://localhost:4000/api/sessions/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: trimmed }),
+        });
+        if (!res.ok) {
+          set({ sessions: prev });
+        }
+      } catch (err) {
+        set({ sessions: prev });
+      }
+    })(id, newTitle),
 
   pinSession: (id) =>
-    set((state) => ({
-      sessions: state.sessions.map((s) =>
-        s.id === id ? { ...s, pinned: true } : s
-      ),
-    })),
+    // Optimistic pin with server persistence
+    (async (id: string) => {
+      const prev = get().sessions;
+      const updated = get().sessions.map((s) => (s.id === id ? { ...s, pinned: true } : s));
+      const reordered = [...updated.filter((s) => s.pinned), ...updated.filter((s) => !s.pinned)];
+      set({ sessions: reordered });
+
+      try {
+        const res = await fetch(`http://localhost:4000/api/sessions/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pinned: true }),
+        });
+        if (!res.ok) set({ sessions: prev });
+      } catch (err) {
+        set({ sessions: prev });
+      }
+    })(id),
 
   unpinSession: (id) =>
-    set((state) => ({
-      sessions: state.sessions.map((s) =>
-        s.id === id ? { ...s, pinned: false } : s
-      ),
-    })),
+    // Optimistic unpin with server persistence
+    (async (id: string) => {
+      const prev = get().sessions;
+      const updated = get().sessions.map((s) => (s.id === id ? { ...s, pinned: false } : s));
+      const reordered = [...updated.filter((s) => s.pinned), ...updated.filter((s) => !s.pinned)];
+      set({ sessions: reordered });
+
+      try {
+        const res = await fetch(`http://localhost:4000/api/sessions/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pinned: false }),
+        });
+        if (!res.ok) set({ sessions: prev });
+      } catch (err) {
+        set({ sessions: prev });
+      }
+    })(id),
 
   deleteSession: async (id) => {
-    await fetch(`http://localhost:4000/api/sessions/${id}`, {
-      method: "DELETE",
-    });
+    const prev = get().sessions;
+    const prevCurrent = get().currentSessionId;
+    const prevMessages = get().messages;
 
+    // Optimistically remove session
     set((state) => ({
       sessions: state.sessions.filter((s) => s.id !== id),
-      currentSessionId:
-        state.currentSessionId === id ? null : state.currentSessionId,
-      messages:
-        state.currentSessionId === id ? [] : state.messages,
+      currentSessionId: state.currentSessionId === id ? null : state.currentSessionId,
+      messages: state.currentSessionId === id ? [] : state.messages,
     }));
+
+    try {
+      const res = await fetch(`http://localhost:4000/api/sessions/${id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        // rollback
+        set({ sessions: prev, currentSessionId: prevCurrent, messages: prevMessages });
+      }
+    } catch (err) {
+      set({ sessions: prev, currentSessionId: prevCurrent, messages: prevMessages });
+    }
   },
+
+  /* -----------------------------
+     RESET TO DEFAULT VIEW
+     - Clear current session selection and messages
+     - Reset pending/awaiting flags
+  ----------------------------- */
+  resetToDefault: () =>
+    set({ currentSessionId: null, messages: [], pendingSession: false, awaitingResponse: false }),
 }));

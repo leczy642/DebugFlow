@@ -18,9 +18,10 @@ import RenameSessionModal from "../chat/RenameSessionModal";
 import DeleteSessionModal from "../chat/DeleteSessionModal";
 
 export default function Sidebar() {
-  const { sidebarOpen, toggleSidebar, centerInput, dockInput } = useUIStore();
+  const { sidebarOpen, toggleSidebar, centerInput, dockInput, inputBarCentered } = useUIStore();
   const {
     sessions,
+    loadSessions,
     startNewSession,
     selectSession,
     currentSessionId,
@@ -29,16 +30,25 @@ export default function Sidebar() {
     unpinSession,
     deleteSession,
     lastUpdatedSessionId,
+    resetToDefault,
   } = useChatStore();
 
   const handleNewSession = () => {
-    startNewSession();
+    // If already centered, do nothing
+    if (inputBarCentered) return;
+
+    // If docked, restore page to default state (center input, clear selection/messages)
     centerInput();
+    resetToDefault();
   };
 
   const handleHeaderClick = () => {
-    // Only center the input bar when header is clicked — do not start a new session
+    // If already centered, do nothing
+    if (inputBarCentered) return;
+
+    // If docked, center the input and restore default page state
     centerInput();
+    resetToDefault();
   };
 
   const handleSelectSession = (id: string) => {
@@ -125,6 +135,21 @@ export default function Sidebar() {
       dockInput();
     }
   }, [currentSessionId, dockInput]);
+
+  // Load sessions from the server when the component mounts
+  useEffect(() => {
+    loadSessions().catch((err) => {
+      // swallow - store will handle errors if necessary
+      console.error("Failed to load sessions:", err);
+    });
+  }, [loadSessions]);
+
+  // Refresh sessions whenever the sidebar is opened so user sees latest
+  useEffect(() => {
+    if (sidebarOpen) {
+      loadSessions().catch((err) => console.error("Failed to refresh sessions:", err));
+    }
+  }, [sidebarOpen, loadSessions]);
 
   return (
     <div className="relative flex h-full">

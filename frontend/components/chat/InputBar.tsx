@@ -93,7 +93,7 @@ export default function InputBar() {
       <div className="relative max-w-4xl mx-auto">
          <textarea
           className="w-full border border-gray-300 rounded-xl
-                     py-3 pl-4 pr-12 bg-gray-50
+                     py-3 pl-4 pr-12 bg-gray-50 resize-none
                      focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="Ask something… paste logs… describe an error…"
           value={text}

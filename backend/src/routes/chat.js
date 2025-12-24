@@ -14,12 +14,13 @@
 
 import express from "express";
 import { logger } from "../utils/logger.js";
-import { chatWithAI } from "../services/chatService.js";
+import { chatWithAI, generateSessionTitle } from "../services/chatService.js";
 import { retryWithBackoff } from "../utils/retry.js";
 import { withTimeout } from "../utils/withTimeout.js";
 import {
   addMessage,
   sessionExists,
+  getSessionWithMessages,
   withTransaction,
 } from "../db/models/postgres_session_queries.js";
 
@@ -63,10 +64,32 @@ router.post("/", async (req, res) => {
 
     /* -----------------------------
        TRANSACTION (USER + AI)
+       Also: if this is the session's first user message, generate a short
+       title from that message and persist it in the same transaction.
     ----------------------------- */
-    const reply = await withTransaction(async (client) => {
+    // check whether this session already has messages
+    const sessionState = await getSessionWithMessages(sessionId);
+    const isFirstMessage = sessionState?.messages?.length === 0;
+
+    const result = await withTransaction(async (client) => {
       // Save user message
       await addMessage(sessionId, "user", message, client);
+      let generatedTitle = null;
+      // If this is the first user message, generate a short session title
+      if (isFirstMessage) {
+        try {
+          generatedTitle = await generateSessionTitle(message);
+          // Update session title within transaction
+          await client.query(
+            `UPDATE sessions SET title = $2, updated_at = NOW() WHERE id = $1`,
+            [sessionId, generatedTitle]
+          );
+        } catch (err) {
+          // Non-fatal: if title generation fails, continue without blocking chat
+          logger.warn("Title generation failed", { error: err instanceof Error ? err.message : err });
+          generatedTitle = null;
+        }
+      }
 
       // 🔮 TODO: extract logs + retrieve context (RAG step)
       // const relevantLogs = await retrieveRelevantLogs(message, sessionId);
@@ -80,13 +103,15 @@ router.post("/", async (req, res) => {
       // Save assistant message
       await addMessage(sessionId, "assistant", aiReply, client);
 
-      return aiReply;
+      return { aiReply, generatedTitle };
     });
+    const reply = result.aiReply;
+    const generatedTitle = result.generatedTitle;
 
-    return res.status(200).json({
-      success: true,
-      reply,
-    });
+    const responsePayload = { success: true, reply };
+    if (generatedTitle) responsePayload.title = generatedTitle;
+
+    return res.status(200).json(responsePayload);
   } catch (error) {
     logger.error("Chat error", {
       error: error instanceof Error ? error.message : error,

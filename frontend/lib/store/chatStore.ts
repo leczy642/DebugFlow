@@ -15,6 +15,7 @@
 // - receiveMessage: Adds assistant message to active session */
 // lib/store/chatStore.ts
 import { create } from "zustand";
+import { useUIStore } from "./uiStore";
 
 type Message = {
   role: "user" | "assistant";
@@ -140,6 +141,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const data = await res.json();
 
     if (res.ok) {
+      // If backend generated a session title for the first message, apply it to local sessions
+      if (data.title) {
+        set((state) => {
+          const found = state.sessions.some((s) => s.id === currentSessionId);
+          const updatedSessions = found
+            ? state.sessions.map((s) => (s.id === currentSessionId ? { ...s, title: data.title } : s))
+            : [{ id: currentSessionId!, title: data.title, messages: [], pinned: false }, ...state.sessions];
+
+          return {
+            sessions: updatedSessions,
+            // mark it recently updated so UI can react immediately
+            lastUpdatedSessionId: currentSessionId,
+          };
+        });
+      }
+
       get().receiveMessage(data.reply);
     } else {
       get().receiveMessage("⚠️ Error processing request");
@@ -237,6 +254,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const prev = get().sessions;
     const prevCurrent = get().currentSessionId;
     const prevMessages = get().messages;
+    // Capture previous UI input state so we can restore on rollback
+    const prevInputCentered = useUIStore.getState().inputBarCentered;
 
     // Optimistically remove session
     set((state) => ({
@@ -245,6 +264,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       messages: state.currentSessionId === id ? [] : state.messages,
     }));
 
+    // If we removed the active session, center the input bar
+    if (prevCurrent === id) {
+      useUIStore.getState().centerInput();
+    }
+
     try {
       const res = await fetch(`http://localhost:4000/api/sessions/${id}`, {
         method: "DELETE",
@@ -252,9 +276,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (!res.ok) {
         // rollback
         set({ sessions: prev, currentSessionId: prevCurrent, messages: prevMessages });
+        // restore previous input bar state if we changed it
+        if (prevCurrent === id && !prevInputCentered) {
+          useUIStore.getState().dockInput();
+        }
       }
     } catch (err) {
       set({ sessions: prev, currentSessionId: prevCurrent, messages: prevMessages });
+      if (prevCurrent === id && !prevInputCentered) {
+        useUIStore.getState().dockInput();
+      }
     }
   },
 

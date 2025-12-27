@@ -1,19 +1,35 @@
 // lib/store/chatStore.ts
-
-// lib/store/chatStore.ts // lib/store/chatStore.ts import { create } from "zustand"; import { nanoid } from "nanoid"; 
-// // Unique ID generation for sessions 
-// /** * Zustand store for managing chat sessions and messages.
-//  * Handles multiple chat sessions with message history and session switching. 
-// * * Expected input: None - this is a standalone store definition. 
-// * Expected output: A React hook useChatStore that provides: *
-//  - sessions: Array of all chat sessions * 
-// - activeSessionId: Currently selected session ID * 
-// - messages: Messages from active session (derived state) * 
-// - startNewSession: Creates new chat session * 
-// - selectSession: Switches between existing sessions *
-//  - sendMessage: Adds user message to active session * 
-// - receiveMessage: Adds assistant message to active session */
-// lib/store/chatStore.ts
+/**
+ * chatStore.ts (Zustand)
+ * -----------------------------------------------------------------------------
+ * PURPOSE:
+ * Centralized state manager for chat history, sessions, and AI interactions.
+ *
+ * ROLE IN PROJECT:
+ * - Holds conversations, session metadata, and UI-driven state flags
+ * - Coordinates API calls to the backend chat + sessions endpoints
+ * - Updates UI layout state when sessions change (via uiStore)
+ *
+ * WHAT THIS FILE DOES:
+ * 1. Loads sessions from the backend
+ * 2. Creates & selects sessions
+ * 3. Sends user messages and receives AI replies
+ * 4. Manages pinned, renamed, and deleted sessions (optimistic updates)
+ * 5. Tracks UI state like "awaitingResponse" and "recently updated session"
+ *
+ * INPUTS:
+ * - API responses from backend
+ * - User chat input
+ *
+ * OUTPUTS:
+ * - Reactive Zustand state consumed by React components
+ * - Calls UI store helpers to center/dock input bar when needed
+ *
+ * IMPORTANT:
+ * This store owns **chat logic**, not rendering.
+ * Components should subscribe only to what they need.
+ * -----------------------------------------------------------------------------
+ */
 import { create } from "zustand";
 import { useUIStore } from "./uiStore";
 
@@ -60,9 +76,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   lastUpdatedSessionId: null,
   awaitingResponse: false,
 
-  /* -----------------------------
-     LOAD EXISTING SESSIONS
-  ----------------------------- */
+  /* ----------------------------------------------------------------
+     LOAD EXISTING SESSIONS FROM SERVER
+  ---------------------------------------------------------------- */
   loadSessions: async () => {
     const res = await fetch("http://localhost:4000/api/sessions");
     const sessions = await res.json();
@@ -76,9 +92,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     });
   },
 
-  /* -----------------------------
-     CREATE SESSION (SERVER)
-  ----------------------------- */
+   /* ----------------------------------------------------------------
+     CREATE NEW SESSION (SERVER + LOCAL STATE)
+  ---------------------------------------------------------------- */
   startNewSession: async () => {
     set({ pendingSession: true });
 
@@ -99,9 +115,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }));
   },
 
-  /* -----------------------------
-     SELECT SESSION
-  ----------------------------- */
+   /* ----------------------------------------------------------------
+     SELECT SESSION & LOAD ITS MESSAGES
+  ---------------------------------------------------------------- */
   selectSession: async (id: string) => {
     const res = await fetch(
       `http://localhost:4000/api/sessions/${id}/messages`
@@ -115,9 +131,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     });
   },
 
-  /* -----------------------------
-     SEND MESSAGE
-  ----------------------------- */
+  /* ----------------------------------------------------------------
+     SEND MESSAGE TO BACKEND + HANDLE RESPONSE
+  ---------------------------------------------------------------- */
   sendMessage: async (content: string) => {
     const { currentSessionId } = get();
     if (!currentSessionId) return;
@@ -163,9 +179,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  /* -----------------------------
-     RECEIVE MESSAGE
-  ----------------------------- */
+   /* ----------------------------------------------------------------
+     RECEIVE AI REPLY (LOCAL ONLY)
+  ---------------------------------------------------------------- */
   receiveMessage: (content: string) => {
     const assistantMessage: Message = { role: "assistant", content };
 
@@ -182,9 +198,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     setTimeout(() => set({ lastUpdatedSessionId: null }), 350);
   },
 
-  /* -----------------------------
-     UI HELPERS (LOCAL ONLY) with optimistic server persistence
-  ----------------------------- */
+  /* ----------------------------------------------------------------
+     UI HELPERS (OPTIMISTIC UPDATES + SERVER PERSISTENCE)
+  ---------------------------------------------------------------- */
   renameSession: (id, newTitle) =>
     // Optimistic update: update UI immediately, persist to server, rollback on failure
     (async (id: string, newTitle: string) => {

@@ -11,6 +11,7 @@
  *   - Rename or pin/unpin a session
  *   - Delete a session and its messages
  */
+//routes/sessions.js
 import express from "express";
 import {
   getAllSessions,

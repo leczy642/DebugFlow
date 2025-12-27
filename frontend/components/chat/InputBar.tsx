@@ -1,4 +1,35 @@
 // components/chat/InputBar.tsx
+/**
+ * InputBar.tsx
+ * -----------------------------------------------------------------------------
+ * PURPOSE:
+ * Renders the chat input component used to type and send prompts.
+ * The input bar can either:
+ *   - float in the center when starting a new conversation, or
+ *   - dock to the bottom of the chat window during an active session.
+ *
+ * ROLE IN PROJECT:
+ * - Primary user entry point for interacting with the chat system
+ * - Connects UI state (Zustand UI store) and chat logic (chatStore)
+ *
+ * WHAT THIS FILE DOES:
+ * 1. Tracks input text locally
+ * 2. Ensures a session exists before sending messages
+ * 3. Moves input bar from center → docked once user sends a message
+ * 4. Prevents sending while awaiting AI response
+ *
+ * INPUTS:
+ * - User text typed into textarea
+ *
+ * OUTPUTS:
+ * - Calls chatStore actions to create sessions and send messages
+ * - Updates UI layout state (centered vs docked)
+ *
+ * IMPORTANT:
+ * This component does NOT fetch messages directly.
+ * It delegates all chat logic to Zustand stores.
+ * -----------------------------------------------------------------------------
+ */
 "use client";
 
 import { useState } from "react";

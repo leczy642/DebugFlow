@@ -32,7 +32,7 @@
  */
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useChatStore } from "../../lib/store/chatStore";
 import { useUIStore } from "../../lib/store/uiStore";
 import { ArrowUpIcon } from "@heroicons/react/24/solid";
@@ -48,6 +48,12 @@ export default function InputBar() {
 
   // UI store hooks
   const { inputBarCentered, dockInput, sidebarOpen } = useUIStore();
+
+  // Clear the local input text when entering centered "new session" mode so the
+  // input does not show stale text when a user starts a new session mid-response.
+  useEffect(() => {
+    if (inputBarCentered) setText("");
+  }, [inputBarCentered]);
 
   // Handle sending message
   const handleSend = async () => {
@@ -97,7 +103,12 @@ export default function InputBar() {
               placeholder="Ask something… paste logs… describe an error…"
               value={text}
               onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend()}
+              onKeyDown={(e) => {
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleSend();
+                                }
+              }}
               disabled={awaitingResponse}
             />
 
@@ -129,7 +140,12 @@ export default function InputBar() {
           placeholder="Ask something… paste logs… describe an error…"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          onKeyDown={(e) => {
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleSend();
+                            }
+          }}
           disabled={awaitingResponse}
         />
 

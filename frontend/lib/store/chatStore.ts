@@ -53,6 +53,11 @@ type ChatStore = {
   lastUpdatedSessionId: string | null;
   awaitingResponse: boolean;
 
+  // Tracks the in-flight request that should be accepted when a reply arrives.
+  // When starting a new session or cancelling, this is set to null so older
+  // responses are ignored.
+  activeRequestId: string | null;
+
   // Reset UI/chat to default view (no active session, empty messages)
   resetToDefault: () => void;
 
@@ -60,7 +65,8 @@ type ChatStore = {
   startNewSession: () => Promise<void>;
   selectSession: (id: string) => Promise<void>;
   sendMessage: (content: string) => Promise<void>;
-  receiveMessage: (content: string) => void;
+  // Optional requestId used to ignore stale replies (when user started a new session)
+  receiveMessage: (content: string, requestId?: string) => void;
 
   renameSession: (id: string, newTitle: string) => void;
   pinSession: (id: string) => void;
@@ -75,6 +81,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   pendingSession: false,
   lastUpdatedSessionId: null,
   awaitingResponse: false,
+  activeRequestId: null,
 
   /* ----------------------------------------------------------------
      LOAD EXISTING SESSIONS FROM SERVER
@@ -140,58 +147,71 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     const userMessage: Message = { role: "user", content };
 
+    // Create a small locally-unique request id so we can ignore stale replies
+    const requestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
     set((state) => ({
       messages: [...state.messages, userMessage],
       awaitingResponse: true,
+      activeRequestId: requestId,
     }));
 
-    const res = await fetch("http://localhost:4000/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: currentSessionId,
-        message: content,
-      }),
-    });
+    try {
+      const res = await fetch("http://localhost:4000/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: currentSessionId,
+          message: content,
+        }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (res.ok) {
-      // If backend generated a session title for the first message, apply it to local sessions
-      if (data.title) {
-        set((state) => {
-          const found = state.sessions.some((s) => s.id === currentSessionId);
-          const updatedSessions = found
-            ? state.sessions.map((s) => (s.id === currentSessionId ? { ...s, title: data.title } : s))
-            : [{ id: currentSessionId!, title: data.title, messages: [], pinned: false }, ...state.sessions];
+      if (res.ok) {
+        // If backend generated a session title for the first message, apply it to local sessions
+        if (data.title) {
+          set((state) => {
+            const found = state.sessions.some((s) => s.id === currentSessionId);
+            const updatedSessions = found
+              ? state.sessions.map((s) => (s.id === currentSessionId ? { ...s, title: data.title } : s))
+              : [{ id: currentSessionId!, title: data.title, messages: [], pinned: false }, ...state.sessions];
 
-          return {
-            sessions: updatedSessions,
-            // mark it recently updated so UI can react immediately
-            lastUpdatedSessionId: currentSessionId,
-          };
-        });
+            return {
+              sessions: updatedSessions,
+              // mark it recently updated so UI can react immediately
+              lastUpdatedSessionId: currentSessionId,
+            };
+          });
+        }
+
+        get().receiveMessage(data.reply, requestId);
+      } else {
+        get().receiveMessage("⚠️ Error processing request", requestId);
       }
-
-      get().receiveMessage(data.reply);
-    } else {
-      get().receiveMessage("⚠️ Error processing request");
+    } catch (err) {
+      get().receiveMessage("⚠️ Error processing request", requestId);
     }
   },
 
    /* ----------------------------------------------------------------
      RECEIVE AI REPLY (LOCAL ONLY)
   ---------------------------------------------------------------- */
-  receiveMessage: (content: string) => {
-    const assistantMessage: Message = { role: "assistant", content };
-
+  receiveMessage: (content: string, requestId?: string) => {
     set((state) => {
+      // If this reply doesn't match the active request, ignore it (stale)
+      if (requestId && state.activeRequestId !== requestId) {
+        return {} as Partial<ChatStore>;
+      }
+
+      const assistantMessage: Message = { role: "assistant", content };
       const updatedMessages = [...state.messages, assistantMessage];
 
       return {
         messages: updatedMessages,
         awaitingResponse: false,
         lastUpdatedSessionId: state.currentSessionId,
+        activeRequestId: null,
       };
     });
 
@@ -311,5 +331,5 @@ export const useChatStore = create<ChatStore>((set, get) => ({
      - Reset pending/awaiting flags
   ----------------------------- */
   resetToDefault: () =>
-    set({ currentSessionId: null, messages: [], pendingSession: false, awaitingResponse: false }),
+    set({ currentSessionId: null, messages: [], pendingSession: false, awaitingResponse: false, activeRequestId: null }),
 }));

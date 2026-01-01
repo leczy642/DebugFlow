@@ -150,11 +150,29 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Create a small locally-unique request id so we can ignore stale replies
     const requestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
-    set((state) => ({
-      messages: [...state.messages, userMessage],
-      awaitingSessionId: currentSessionId,
-      activeRequestId: requestId,
-    }));
+    set((state) => {
+      const userMessage: Message = { role: "user", content };
+
+      // Reorder sessions:
+      // 1. If current session is pinned, it stays where it is (among pinned).
+      // 2. If current session is unpinned, it moves to the top of the unpinned list.
+      let newSessions = state.sessions;
+      const currentSession = state.sessions.find((s) => s.id === currentSessionId);
+
+      if (currentSession && !currentSession.pinned) {
+        const otherSessions = state.sessions.filter((s) => s.id !== currentSessionId);
+        const pinned = otherSessions.filter((s) => s.pinned);
+        const unpinned = otherSessions.filter((s) => !s.pinned);
+        newSessions = [...pinned, currentSession, ...unpinned];
+      }
+
+      return {
+        messages: [...state.messages, userMessage],
+        sessions: newSessions,
+        awaitingSessionId: currentSessionId,
+        activeRequestId: requestId,
+      };
+    });
 
     try {
       const res = await fetch("http://localhost:4000/api/chat", {

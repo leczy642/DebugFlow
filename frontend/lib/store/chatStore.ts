@@ -51,7 +51,7 @@ type ChatStore = {
   messages: Message[];
   pendingSession: boolean;
   lastUpdatedSessionId: string | null;
-  awaitingResponse: boolean;
+  awaitingSessionId: string | null;
 
   // Tracks the in-flight request that should be accepted when a reply arrives.
   // When starting a new session or cancelling, this is set to null so older
@@ -80,7 +80,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   pendingSession: false,
   lastUpdatedSessionId: null,
-  awaitingResponse: false,
+  awaitingSessionId: null,
   activeRequestId: null,
 
   /* ----------------------------------------------------------------
@@ -99,9 +99,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     });
   },
 
-   /* ----------------------------------------------------------------
-     CREATE NEW SESSION (SERVER + LOCAL STATE)
-  ---------------------------------------------------------------- */
+  /* ----------------------------------------------------------------
+    CREATE NEW SESSION (SERVER + LOCAL STATE)
+ ---------------------------------------------------------------- */
   startNewSession: async () => {
     set({ pendingSession: true });
 
@@ -122,9 +122,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }));
   },
 
-   /* ----------------------------------------------------------------
-     SELECT SESSION & LOAD ITS MESSAGES
-  ---------------------------------------------------------------- */
+  /* ----------------------------------------------------------------
+    SELECT SESSION & LOAD ITS MESSAGES
+ ---------------------------------------------------------------- */
   selectSession: async (id: string) => {
     const res = await fetch(
       `http://localhost:4000/api/sessions/${id}/messages`
@@ -152,7 +152,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     set((state) => ({
       messages: [...state.messages, userMessage],
-      awaitingResponse: true,
+      awaitingSessionId: currentSessionId,
       activeRequestId: requestId,
     }));
 
@@ -194,9 +194,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-   /* ----------------------------------------------------------------
-     RECEIVE AI REPLY (LOCAL ONLY)
-  ---------------------------------------------------------------- */
+  /* ----------------------------------------------------------------
+    RECEIVE AI REPLY (LOCAL ONLY)
+ ---------------------------------------------------------------- */
   receiveMessage: (content: string, requestId?: string) => {
     set((state) => {
       // If this reply doesn't match the active request, ignore it (stale)
@@ -209,7 +209,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       return {
         messages: updatedMessages,
-        awaitingResponse: false,
+        awaitingSessionId: null,
         lastUpdatedSessionId: state.currentSessionId,
         activeRequestId: null,
       };
@@ -331,5 +331,5 @@ export const useChatStore = create<ChatStore>((set, get) => ({
      - Reset pending/awaiting flags
   ----------------------------- */
   resetToDefault: () =>
-    set({ currentSessionId: null, messages: [], pendingSession: false, awaitingResponse: false, activeRequestId: null }),
+    set({ currentSessionId: null, messages: [], pendingSession: false, awaitingSessionId: null, activeRequestId: null }),
 }));

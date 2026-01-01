@@ -44,7 +44,7 @@ export default function InputBar() {
   const sendMessage = useChatStore((s) => s.sendMessage);
   const startNewSession = useChatStore((s) => s.startNewSession);
   const currentSessionId = useChatStore((s) => s.currentSessionId);
-  const awaitingResponse = useChatStore((s) => s.awaitingResponse);
+  const awaitingSessionId = useChatStore((s) => s.awaitingSessionId);
 
   // UI store hooks
   const { inputBarCentered, dockInput, sidebarOpen } = useUIStore();
@@ -55,9 +55,16 @@ export default function InputBar() {
     if (inputBarCentered) setText("");
   }, [inputBarCentered]);
 
+  // Clear input text when switching sessions
+  useEffect(() => {
+    setText("");
+  }, [currentSessionId]);
+
+  const isAwaitingResponse = !!currentSessionId && awaitingSessionId === currentSessionId;
+
   // Handle sending message
   const handleSend = async () => {
-    if (!text.trim() || awaitingResponse) return;
+    if (!text.trim() || isAwaitingResponse) return;
 
     // Ensure a session exists
     if (!currentSessionId) {
@@ -104,17 +111,17 @@ export default function InputBar() {
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
-                                  if (e.key === "Enter" && !e.shiftKey) {
-                                  e.preventDefault();
-                                  handleSend();
-                                }
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
               }}
-              disabled={awaitingResponse}
+              disabled={isAwaitingResponse}
             />
 
             <button
               onClick={handleSend}
-              disabled={!text.trim() || awaitingResponse}
+              disabled={!text.trim() || isAwaitingResponse}
               className="absolute right-2 bottom-0 -translate-y-1/2
                          bg-blue-600 text-white p-2 rounded-lg
                          hover:bg-blue-700 disabled:bg-gray-300"
@@ -133,7 +140,7 @@ export default function InputBar() {
   return (
     <div className="p-4 border-t bg-white">
       <div className="relative max-w-4xl mx-auto">
-         <textarea
+        <textarea
           className="w-full border border-gray-300 rounded-xl
                      py-3 pl-4 pr-12 bg-gray-50 resize-none
                      focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -141,17 +148,17 @@ export default function InputBar() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-                                  if (e.key === "Enter" && !e.shiftKey) {
-                                  e.preventDefault();
-                                  handleSend();
-                            }
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
           }}
-          disabled={awaitingResponse}
+          disabled={isAwaitingResponse}
         />
 
         <button
           onClick={handleSend}
-          disabled={!text.trim() || awaitingResponse}
+          disabled={!text.trim() || isAwaitingResponse}
           className="absolute right-2 top-1/2 -translate-y-1/2
                      bg-blue-600 text-white p-2 rounded-lg
                      hover:bg-blue-700 disabled:bg-gray-300"

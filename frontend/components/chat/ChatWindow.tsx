@@ -10,7 +10,7 @@ import { useChatStore } from "../../lib/store/chatStore";
 
 export default function ChatWindow() {
   const { messages, currentSessionId } = useChatStore();
-  const { awaitingResponse } = useChatStore();
+  const { awaitingSessionId } = useChatStore();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -68,7 +68,7 @@ export default function ChatWindow() {
             />
           ))}
 
-          {awaitingResponse && <TypingBubble />}
+          {!!currentSessionId && awaitingSessionId === currentSessionId && <TypingBubble />}
 
           {/* sentinel element to scroll to */}
           <div ref={bottomRef} />

@@ -52,6 +52,7 @@ type ChatStore = {
   pendingSession: boolean;
   lastUpdatedSessionId: string | null;
   awaitingSessionId: string | null;
+  abortController: AbortController | null;
 
   // Tracks the in-flight request that should be accepted when a reply arrives.
   // When starting a new session or cancelling, this is set to null so older
@@ -60,6 +61,7 @@ type ChatStore = {
 
   // Reset UI/chat to default view (no active session, empty messages)
   resetToDefault: () => void;
+  stopGeneration: () => void;
 
   loadSessions: () => Promise<void>;
   startNewSession: () => Promise<void>;
@@ -81,6 +83,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   pendingSession: false,
   lastUpdatedSessionId: null,
   awaitingSessionId: null,
+  abortController: null,
   activeRequestId: null,
 
   /* ----------------------------------------------------------------
@@ -149,6 +152,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     // Create a small locally-unique request id so we can ignore stale replies
     const requestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const controller = new AbortController();
 
     set((state) => {
       const userMessage: Message = { role: "user", content };
@@ -171,6 +175,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         sessions: newSessions,
         awaitingSessionId: currentSessionId,
         activeRequestId: requestId,
+        abortController: controller,
       };
     });
 
@@ -182,6 +187,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           sessionId: currentSessionId,
           message: content,
         }),
+        signal: controller.signal,
       });
 
       const data = await res.json();
@@ -207,8 +213,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       } else {
         get().receiveMessage("⚠️ Error processing request", requestId);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return;
+      }
       get().receiveMessage("⚠️ Error processing request", requestId);
+    } finally {
+      set({ abortController: null });
     }
   },
 
@@ -349,5 +360,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
      - Reset pending/awaiting flags
   ----------------------------- */
   resetToDefault: () =>
-    set({ currentSessionId: null, messages: [], pendingSession: false, awaitingSessionId: null, activeRequestId: null }),
+    set({ currentSessionId: null, messages: [], pendingSession: false, awaitingSessionId: null, activeRequestId: null, abortController: null }),
+
+  stopGeneration: () => {
+    const { abortController } = get();
+    if (abortController) {
+      abortController.abort();
+    }
+    set({ awaitingSessionId: null, activeRequestId: null, abortController: null });
+  },
 }));

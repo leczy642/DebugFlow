@@ -35,7 +35,7 @@
 import { useState, useEffect } from "react";
 import { useChatStore } from "../../lib/store/chatStore";
 import { useUIStore } from "../../lib/store/uiStore";
-import { ArrowUpIcon } from "@heroicons/react/24/solid";
+import { ArrowUpIcon, StopIcon } from "@heroicons/react/24/solid";
 
 export default function InputBar() {
   const [text, setText] = useState("");
@@ -45,6 +45,7 @@ export default function InputBar() {
   const startNewSession = useChatStore((s) => s.startNewSession);
   const currentSessionId = useChatStore((s) => s.currentSessionId);
   const awaitingSessionId = useChatStore((s) => s.awaitingSessionId);
+  const stopGeneration = useChatStore((s) => s.stopGeneration);
 
   // UI store hooks
   const { inputBarCentered, dockInput, sidebarOpen } = useUIStore();
@@ -119,15 +120,26 @@ export default function InputBar() {
               disabled={isAwaitingResponse}
             />
 
-            <button
-              onClick={handleSend}
-              disabled={!text.trim() || isAwaitingResponse}
-              className="absolute right-2 bottom-0 -translate-y-1/2
-                         bg-blue-600 text-white p-2 rounded-lg
-                         hover:bg-blue-700 disabled:bg-gray-300"
-            >
-              <ArrowUpIcon className="h-5 w-5" />
-            </button>
+            {isAwaitingResponse ? (
+              <button
+                onClick={stopGeneration}
+                className="absolute right-2 bottom-0 -translate-y-1/2
+                           bg-[#606060] text-white p-2 rounded-lg
+                           hover:bg-[#4a4a4a]"
+              >
+                <StopIcon className="h-5 w-5" />
+              </button>
+            ) : (
+              <button
+                onClick={handleSend}
+                disabled={!text.trim()}
+                className="absolute right-2 bottom-0 -translate-y-1/2
+                           bg-blue-600 text-white p-2 rounded-lg
+                           hover:bg-blue-700 disabled:bg-gray-300"
+              >
+                <ArrowUpIcon className="h-5 w-5" />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -156,15 +168,26 @@ export default function InputBar() {
           disabled={isAwaitingResponse}
         />
 
-        <button
-          onClick={handleSend}
-          disabled={!text.trim() || isAwaitingResponse}
-          className="absolute right-2 top-1/2 -translate-y-1/2
-                     bg-blue-600 text-white p-2 rounded-lg
-                     hover:bg-blue-700 disabled:bg-gray-300"
-        >
-          <ArrowUpIcon className="h-5 w-5" />
-        </button>
+        {isAwaitingResponse ? (
+          <button
+            onClick={stopGeneration}
+            className="absolute right-2 top-1/2 -translate-y-1/2
+                       bg-[#606060] text-white p-2 rounded-lg
+                       hover:bg-[#4a4a4a]"
+          >
+            <StopIcon className="h-5 w-5" />
+          </button>
+        ) : (
+          <button
+            onClick={handleSend}
+            disabled={!text.trim()}
+            className="absolute right-2 top-1/2 -translate-y-1/2
+                       bg-blue-600 text-white p-2 rounded-lg
+                       hover:bg-blue-700 disabled:bg-gray-300"
+          >
+            <ArrowUpIcon className="h-5 w-5" />
+          </button>
+        )}
       </div>
     </div>
   );

@@ -38,6 +38,7 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   parentId?: string | null;
+  isDeleted?: boolean;
 };
 
 type Session = {
@@ -79,6 +80,7 @@ type ChatStore = {
   unpinSession: (id: string) => void;
   deleteSession: (id: string) => Promise<void>;
   deleteMessage: (id: string) => Promise<void>;
+  restoreMessage: (id: string) => Promise<void>;
 };
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -298,13 +300,35 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   deleteMessage: async (id: string) => {
     const prevMessages = get().messages;
+
+    // Optimistic soft delete: mark as deleted instead of removing
     set((state) => ({
-      messages: state.messages.filter((m) => m.id !== id),
+      messages: state.messages.map((m) => m.id === id ? { ...m, isDeleted: true } : m),
     }));
 
     try {
       const res = await fetch(`http://localhost:4000/api/messages/${id}`, {
         method: "DELETE",
+      });
+      if (!res.ok) {
+        set({ messages: prevMessages });
+      }
+    } catch (err) {
+      set({ messages: prevMessages });
+    }
+  },
+
+  restoreMessage: async (id: string) => {
+    const prevMessages = get().messages;
+
+    // Optimistic restore
+    set((state) => ({
+      messages: state.messages.map((m) => m.id === id ? { ...m, isDeleted: false } : m),
+    }));
+
+    try {
+      const res = await fetch(`http://localhost:4000/api/messages/${id}/restore`, {
+        method: "POST",
       });
       if (!res.ok) {
         set({ messages: prevMessages });

@@ -75,7 +75,7 @@ export async function getSessionWithMessages(sessionId) {
     if (sessionRes.rowCount === 0) return null;
 
     const messagesRes = await pool.query(
-      `SELECT id, role, content, created_at, parent_id as "parentId"
+      `SELECT id, role, content, created_at, parent_id as "parentId", is_deleted as "isDeleted"
        FROM messages
        WHERE session_id = $1
        ORDER BY created_at ASC`,
@@ -196,9 +196,22 @@ export async function addMessage(
   return id;
 }
 
-export async function deleteMessageById(messageId) {
+export async function deleteMessageById(messageId, userId = null) {
+  // Soft delete: set is_deleted = true, deleted_at = NOW(), deleted_by = userId
   const { rowCount } = await pool.query(
-    `DELETE FROM messages WHERE id = $1`,
+    `UPDATE messages 
+     SET is_deleted = true, deleted_at = NOW(), deleted_by = $2
+     WHERE id = $1`,
+    [messageId, userId]
+  );
+  return rowCount > 0;
+}
+
+export async function restoreMessageById(messageId) {
+  const { rowCount } = await pool.query(
+    `UPDATE messages 
+     SET is_deleted = false, deleted_at = NULL, deleted_by = NULL
+     WHERE id = $1`,
     [messageId]
   );
   return rowCount > 0;

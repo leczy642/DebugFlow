@@ -34,8 +34,10 @@ import { create } from "zustand";
 import { useUIStore } from "./uiStore";
 
 type Message = {
+  id?: string;
   role: "user" | "assistant";
   content: string;
+  parentId?: string | null;
 };
 
 type Session = {
@@ -66,14 +68,17 @@ type ChatStore = {
   loadSessions: () => Promise<void>;
   startNewSession: () => Promise<void>;
   selectSession: (id: string) => Promise<void>;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, parentId?: string, skipUserMessage?: boolean) => Promise<void>;
+  editMessage: (messageId: string, newContent: string) => Promise<void>;
+  regenerateResponse: (messageId: string) => Promise<void>;
   // Optional requestId used to ignore stale replies (when user started a new session)
-  receiveMessage: (content: string, requestId?: string) => void;
+  receiveMessage: (content: string, requestId?: string, parentId?: string) => void;
 
   renameSession: (id: string, newTitle: string) => void;
   pinSession: (id: string) => void;
   unpinSession: (id: string) => void;
   deleteSession: (id: string) => Promise<void>;
+  deleteMessage: (id: string) => Promise<void>;
 };
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -138,41 +143,60 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       currentSessionId: id,
       messages,
       pendingSession: false,
+      awaitingSessionId: null, // Clear loading state when switching sessions
     });
   },
 
   /* ----------------------------------------------------------------
      SEND MESSAGE TO BACKEND + HANDLE RESPONSE
   ---------------------------------------------------------------- */
-  sendMessage: async (content: string) => {
-    const { currentSessionId } = get();
+  sendMessage: async (content: string, parentId?: string, skipUserMessage?: boolean) => {
+    const { currentSessionId, messages } = get();
     if (!currentSessionId) return;
 
-    const userMessage: Message = { role: "user", content };
+    // If no parentId is provided (normal chat flow), use the last message's ID as parent
+    // This ensures linear conversation history.
+    // If skipUserMessage is true (regeneration), parentId MUST be provided by caller.
+    let effectiveParentId = parentId;
+    if (!effectiveParentId && !skipUserMessage && messages.length > 0) {
+      effectiveParentId = messages[messages.length - 1].id;
+    }
 
     // Create a small locally-unique request id so we can ignore stale replies
     const requestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const controller = new AbortController();
 
     set((state) => {
-      const userMessage: Message = { role: "user", content };
+      // Note: The backend will assign an ID. If we want to link the *next* assistant message to this,
+      // we need the ID. But `sendMessage` is async.
+      // The backend `chat` endpoint now links them.
 
-      // Reorder sessions:
-      // 1. If current session is pinned, it stays where it is (among pinned).
-      // 2. If current session is unpinned, it moves to the top of the unpinned list.
+      // If skipping user message (regenerating), we don't add a new user message to the store optimistically
+      // because it already exists. We just want to trigger the AI response.
+      // However, we might want to show a loading state.
+      // For now, let's just NOT add the user message if skipUserMessage is true.
+
       let newSessions = state.sessions;
-      const currentSession = state.sessions.find((s) => s.id === currentSessionId);
-
-      if (currentSession && !currentSession.pinned) {
-        const otherSessions = state.sessions.filter((s) => s.id !== currentSessionId);
-        const pinned = otherSessions.filter((s) => s.pinned);
-        const unpinned = otherSessions.filter((s) => !s.pinned);
-        newSessions = [...pinned, currentSession, ...unpinned];
+      if (!skipUserMessage) {
+        const userMessage: Message = { role: "user", content, parentId: effectiveParentId || null };
+        // Reorder sessions logic...
+        const currentSession = state.sessions.find((s) => s.id === currentSessionId);
+        if (currentSession && !currentSession.pinned) {
+          const otherSessions = state.sessions.filter((s) => s.id !== currentSessionId);
+          const pinned = otherSessions.filter((s) => s.pinned);
+          const unpinned = otherSessions.filter((s) => !s.pinned);
+          newSessions = [...pinned, currentSession, ...unpinned];
+        }
+        return {
+          messages: [...state.messages, userMessage],
+          sessions: newSessions,
+          awaitingSessionId: currentSessionId,
+          activeRequestId: requestId,
+          abortController: controller,
+        };
       }
 
       return {
-        messages: [...state.messages, userMessage],
-        sessions: newSessions,
         awaitingSessionId: currentSessionId,
         activeRequestId: requestId,
         abortController: controller,
@@ -186,6 +210,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         body: JSON.stringify({
           sessionId: currentSessionId,
           message: content,
+          parentId: effectiveParentId,
+          skipUserMessage,
         }),
         signal: controller.signal,
       });
@@ -209,7 +235,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           });
         }
 
-        get().receiveMessage(data.reply, requestId);
+        // We reload messages to get the correct IDs and structure from DB
+        // This is a bit heavy but ensures consistency for now.
+        await get().selectSession(currentSessionId);
+
+        // Clear loading state since we are done
+        set({ awaitingSessionId: null, activeRequestId: null });
+
+        // get().receiveMessage(data.reply, requestId);
       } else {
         get().receiveMessage("⚠️ Error processing request", requestId);
       }
@@ -223,17 +256,75 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
+  regenerateResponse: async (messageId: string) => {
+    const { messages, sendMessage } = get();
+    const messageToRegenerate = messages.find((m) => m.id === messageId);
+    if (!messageToRegenerate) return;
+
+    // If it's an assistant message, we want to regenerate the response to its PARENT (the user message).
+    // So we find the parent.
+    if (messageToRegenerate.role === "assistant") {
+      const parentId = messageToRegenerate.parentId;
+      if (!parentId) return; // Can't regenerate if no parent (orphan)
+
+      const parentMessage = messages.find((m) => m.id === parentId);
+      if (!parentMessage) return;
+
+      // Resend the parent message content, linked to the SAME parent ID as the user message?
+      // No, we want to send a NEW request that is a child of the USER message.
+      // So we pass parentId = parentMessage.id (the user message ID)
+      // And skipUserMessage = true (so we don't create a duplicate user message)
+
+      await sendMessage(parentMessage.content, parentMessage.id, true);
+    }
+  },
+
+  editMessage: async (messageId: string, newContent: string) => {
+    const { messages, sendMessage } = get();
+    const originalMessage = messages.find((m) => m.id === messageId);
+    if (!originalMessage) return;
+
+    // To "edit" a message, we create a NEW message with the SAME parentId.
+    // This makes it a sibling of the original message (a new version/slide).
+    // If the original message was a root (no parent), we pass null/undefined as parentId.
+    // We do NOT use skipUserMessage because this IS a user message (the edited version).
+
+    // Note: sendMessage logic will auto-assign parentId if not provided. 
+    // But here we explicitly want to use the ORIGINAL parentId, not the "last message" ID.
+    // So we must pass it explicitly.
+
+    await sendMessage(newContent, originalMessage.parentId || undefined);
+  },
+
+  deleteMessage: async (id: string) => {
+    const prevMessages = get().messages;
+    set((state) => ({
+      messages: state.messages.filter((m) => m.id !== id),
+    }));
+
+    try {
+      const res = await fetch(`http://localhost:4000/api/messages/${id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        set({ messages: prevMessages });
+      }
+    } catch (err) {
+      set({ messages: prevMessages });
+    }
+  },
+
   /* ----------------------------------------------------------------
     RECEIVE AI REPLY (LOCAL ONLY)
  ---------------------------------------------------------------- */
-  receiveMessage: (content: string, requestId?: string) => {
+  receiveMessage: (content: string, requestId?: string, parentId?: string) => {
     set((state) => {
       // If this reply doesn't match the active request, ignore it (stale)
       if (requestId && state.activeRequestId !== requestId) {
         return {} as Partial<ChatStore>;
       }
 
-      const assistantMessage: Message = { role: "assistant", content };
+      const assistantMessage: Message = { role: "assistant", content, parentId: parentId || null };
       const updatedMessages = [...state.messages, assistantMessage];
 
       return {

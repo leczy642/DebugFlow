@@ -40,6 +40,7 @@ import ingestRouter from './routes/ingest.js';
 import analyzeRouter from './routes/analyze.js';
 import chatRouter from './routes/chat.js';
 import sessionsRouter from './routes/sessions.js';
+import messagesRouter from './routes/messages.js';
 
 // Load environment variables
 dotenv.config();
@@ -67,6 +68,7 @@ app.use('/api/analyze', analyzeRouter);
 app.use('/api/chat', chatRouter);
 // Mount sessions under /api to match frontend expectations
 app.use("/api/sessions", sessionsRouter);
+app.use("/api/messages", messagesRouter);
 
 // Global error handler (must be last)
 app.use(errorHandler(logger));

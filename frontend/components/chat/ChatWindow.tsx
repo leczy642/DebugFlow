@@ -3,25 +3,99 @@
 "use client";
 
 import MessageBubble from "./MessageBubble";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { ArrowDownIcon } from "@heroicons/react/24/solid";
 import TypingBubble from "./TypingBubble";
 import { useChatStore } from "../../lib/store/chatStore";
 
+type Message = {
+  id?: string;
+  role: "user" | "assistant";
+  content: string;
+  parentId?: string | null;
+};
+
 export default function ChatWindow() {
-  const { messages, currentSessionId } = useChatStore();
-  const { awaitingSessionId } = useChatStore();
+  const { messages, currentSessionId, awaitingSessionId, regenerateResponse, deleteMessage } = useChatStore();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
-  const prevLastRoleRef = useRef<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
+
+  // State to track which version is selected for each parent node
+  // Key: parentId (or 'root'), Value: selected messageId
+  const [activeVersions, setActiveVersions] = useState<Record<string, string>>({});
+
+  // Build the thread to display based on active versions
+  const thread = useMemo(() => {
+    if (!messages.length) return [];
+
+    // Group by parentId
+    const childrenMap = new Map<string, Message[]>();
+    const roots: Message[] = [];
+
+    messages.forEach(m => {
+      if (m.parentId) {
+        if (!childrenMap.has(m.parentId)) childrenMap.set(m.parentId, []);
+        childrenMap.get(m.parentId)!.push(m);
+      } else {
+        roots.push(m);
+      }
+    });
+
+    const result: { message: Message; siblings: Message[]; index: number; parentIdKey: string }[] = [];
+
+    // Start with roots
+    let currentSiblings = roots;
+    let parentIdKey = 'root';
+
+    while (currentSiblings.length > 0) {
+      // Determine which sibling is active
+      // Default to the last one (most recent) if not set in state
+      const activeId = activeVersions[parentIdKey];
+      let activeIndex = -1;
+
+      if (activeId) {
+        activeIndex = currentSiblings.findIndex(m => m.id === activeId);
+      }
+
+      if (activeIndex === -1) {
+        activeIndex = currentSiblings.length - 1;
+      }
+
+      const activeMessage = currentSiblings[activeIndex];
+
+      result.push({
+        message: activeMessage,
+        siblings: currentSiblings,
+        index: activeIndex,
+        parentIdKey
+      });
+
+      // Move to next level
+      if (activeMessage.id && childrenMap.has(activeMessage.id)) {
+        currentSiblings = childrenMap.get(activeMessage.id)!;
+        parentIdKey = activeMessage.id;
+      } else {
+        currentSiblings = [];
+      }
+    }
+
+    return result;
+  }, [messages, activeVersions]);
+
+  const handleSelectVersion = (parentIdKey: string, messageId: string) => {
+    setActiveVersions(prev => ({
+      ...prev,
+      [parentIdKey]: messageId
+    }));
+  };
 
   useEffect(() => {
     if (!currentSessionId) return;
-    if (messages.length === 0) return;
+    if (thread.length === 0) return;
 
-    const last = messages[messages.length - 1];
+    const last = thread[thread.length - 1].message;
 
     // Only auto-scroll when the last message is from the assistant
     if (last.role === "assistant") {
@@ -32,9 +106,7 @@ export default function ChatWindow() {
         containerRef.current.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" });
       }
     }
-
-    prevLastRoleRef.current = last.role;
-  }, [messages, currentSessionId]);
+  }, [thread, currentSessionId]);
 
   // show/hide the scroll-to-bottom button based on scroll position
   useEffect(() => {
@@ -60,11 +132,21 @@ export default function ChatWindow() {
     <>
       <div id="chat-scroll-container" ref={containerRef} className="flex-1 overflow-y-auto bg-white pt-12">
         <div className="max-w-4xl mx-auto p-6"> {/* NEW container to match InputBar */}
-          {messages.map((msg, index) => (
+          {thread.map((item, index) => (
             <MessageBubble
-              key={index}
-              role={msg.role}
-              content={msg.content}
+              key={item.message.id || index}
+              message={item.message}
+              siblings={item.siblings}
+              currentVersionIndex={item.index}
+              onSelectVersion={(idx) => {
+                const selectedMsg = item.siblings[idx];
+                if (selectedMsg && selectedMsg.id) {
+                  handleSelectVersion(item.parentIdKey, selectedMsg.id);
+                }
+              }}
+              onRegenerate={item.message.id ? () => regenerateResponse(item.message.id!) : undefined}
+              onDelete={item.message.id ? () => deleteMessage(item.message.id!) : undefined}
+              onEdit={item.message.id ? (newContent) => useChatStore.getState().editMessage(item.message.id!, newContent) : undefined}
             />
           ))}
 

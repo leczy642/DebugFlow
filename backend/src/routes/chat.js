@@ -32,7 +32,7 @@ router.post("/", async (req, res) => {
   );
 
   try {
-    const { sessionId, message } = req.body;
+    const { sessionId, message, parentId, skipUserMessage } = req.body;
 
     /* -----------------------------
        VALIDATION
@@ -73,10 +73,21 @@ router.post("/", async (req, res) => {
 
     const result = await withTransaction(async (client) => {
       // Save user message
-      await addMessage(sessionId, "user", message, client);
+      // If parentId is not provided, we try to find the last message to link to (linear chain)
+      // But for now, if it's null, it's a root message or we let the DB handle it if we want strict trees.
+      // In this app, we'll just pass what we have.
+      // Save user message
+      let userMessageId;
+      if (skipUserMessage && parentId) {
+        // If regenerating, we reuse the existing user message (parentId)
+        userMessageId = parentId;
+      } else {
+        userMessageId = await addMessage(sessionId, "user", message, client, parentId);
+      }
+
       let generatedTitle = null;
       // If this is the first user message, generate a short session title
-      if (isFirstMessage) {
+      if (isFirstMessage && !skipUserMessage) {
         try {
           generatedTitle = await generateSessionTitle(message);
           // Update session title within transaction
@@ -100,8 +111,9 @@ router.post("/", async (req, res) => {
         LLM_CHAT_TIMEOUT_MS
       );
 
-      // Save assistant message
-      await addMessage(sessionId, "assistant", aiReply, client);
+      // Save assistant message, linked to user message
+      await addMessage(sessionId, "assistant", aiReply, client, userMessageId);
+
 
       return { aiReply, generatedTitle };
     });

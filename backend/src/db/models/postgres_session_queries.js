@@ -75,7 +75,7 @@ export async function getSessionWithMessages(sessionId) {
     if (sessionRes.rowCount === 0) return null;
 
     const messagesRes = await pool.query(
-      `SELECT role, content, created_at
+      `SELECT id, role, content, created_at, parent_id as "parentId"
        FROM messages
        WHERE session_id = $1
        ORDER BY created_at ASC`,
@@ -88,28 +88,12 @@ export async function getSessionWithMessages(sessionId) {
     };
   } catch (err) {
     if (err && err.code === "42703") {
+      // Handle potential missing columns (pinned or parent_id)
       await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS pinned boolean DEFAULT false`);
-      const sessionRes = await pool.query(
-        `SELECT id, title, pinned, created_at, updated_at
-         FROM sessions
-         WHERE id = $1`,
-        [sessionId]
-      );
+      await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS parent_id uuid`);
 
-      if (sessionRes.rowCount === 0) return null;
-
-      const messagesRes = await pool.query(
-        `SELECT role, content, created_at
-         FROM messages
-         WHERE session_id = $1
-         ORDER BY created_at ASC`,
-        [sessionId]
-      );
-
-      return {
-        ...sessionRes.rows[0],
-        messages: messagesRes.rows,
-      };
+      // Retry the operation
+      return getSessionWithMessages(sessionId);
     }
     throw err;
   }
@@ -179,13 +163,28 @@ export async function addMessage(
   sessionId,
   role,
   content,
-  client = pool
+  client = pool,
+  parentId = null
 ) {
-  await client.query(
-    `INSERT INTO messages (id, session_id, role, content)
-     VALUES ($1, $2, $3, $4)`,
-    [uuid(), sessionId, role, content]
-  );
+  const id = uuid();
+  try {
+    await client.query(
+      `INSERT INTO messages (id, session_id, role, content, parent_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [id, sessionId, role, content, parentId]
+    );
+  } catch (err) {
+    if (err && err.code === "42703") {
+      await client.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS parent_id uuid`);
+      await client.query(
+        `INSERT INTO messages (id, session_id, role, content, parent_id)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [id, sessionId, role, content, parentId]
+      );
+    } else {
+      throw err;
+    }
+  }
 
   await client.query(
     `UPDATE sessions
@@ -193,6 +192,16 @@ export async function addMessage(
      WHERE id = $1`,
     [sessionId]
   );
+
+  return id;
+}
+
+export async function deleteMessageById(messageId) {
+  const { rowCount } = await pool.query(
+    `DELETE FROM messages WHERE id = $1`,
+    [messageId]
+  );
+  return rowCount > 0;
 }
 
 /* -----------------------------

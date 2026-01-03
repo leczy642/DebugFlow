@@ -79,10 +79,10 @@ export default function MessageBubble({
 
   const showNavigation = siblings.length > 1;
 
-  // If message is deleted, show placeholder
-  if (message.isDeleted) {
-    return (
-      <div className={`group flex my-3 ${isUser ? "justify-end" : "justify-start"}`}>
+  // Render content based on deleted state
+  const renderContent = () => {
+    if (message.isDeleted) {
+      return (
         <div className="flex items-center gap-2 text-gray-400 text-sm italic bg-gray-50 px-3 py-2 rounded-lg border border-gray-100">
           <span>Message deleted — </span>
           {onRestore && (
@@ -95,51 +95,57 @@ export default function MessageBubble({
             </button>
           )}
         </div>
+      );
+    }
+
+    if (isEditing) {
+      return (
+        <div className="w-full bg-white border border-gray-300 rounded-lg p-3 shadow-sm">
+          <textarea
+            ref={textareaRef}
+            value={editContent}
+            onChange={(e) => {
+              setEditContent(e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = e.target.scrollHeight + "px";
+            }}
+            className="w-full resize-none outline-none text-gray-900 text-sm bg-transparent"
+            rows={1}
+          />
+          <div className="flex justify-end gap-2 mt-2">
+            <button onClick={handleSaveEdit} className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">
+              Save & Submit
+            </button>
+            <button onClick={handleCancelEdit} className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300">
+              Cancel
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className={`
+          rounded-lg whitespace-pre-wrap relative
+          ${isUser ? "bg-sky-100 text-gray-900 p-3 text-left" : "text-gray-900 px-1 py-1 text-left"}
+        `}
+      >
+        {message.content}
       </div>
     );
-  }
+  };
 
   return (
     <>
       <div className={`group flex my-3 ${isUser ? "justify-end" : "justify-start"}`}>
         <div className={`flex flex-col max-w-[90%] ${isUser ? "items-end" : "items-start"}`}>
 
-          {isEditing ? (
-            <div className="w-full bg-white border border-gray-300 rounded-lg p-3 shadow-sm">
-              <textarea
-                ref={textareaRef}
-                value={editContent}
-                onChange={(e) => {
-                  setEditContent(e.target.value);
-                  e.target.style.height = "auto";
-                  e.target.style.height = e.target.scrollHeight + "px";
-                }}
-                className="w-full resize-none outline-none text-gray-900 text-sm bg-transparent"
-                rows={1}
-              />
-              <div className="flex justify-end gap-2 mt-2">
-                <button onClick={handleSaveEdit} className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">
-                  Save & Submit
-                </button>
-                <button onClick={handleCancelEdit} className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300">
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div
-              className={`
-                rounded-lg whitespace-pre-wrap relative
-                ${isUser ? "bg-sky-100 text-gray-900 p-3 text-left" : "text-gray-900 px-1 py-1 text-left"}
-              `}
-            >
-              {message.content}
-            </div>
-          )}
+          {renderContent()}
 
           {!isEditing && (
             <div className={`flex items-center gap-2 mt-1 ${isUser ? "self-end" : "self-start"}`}>
-              {/* Slide Navigation */}
+              {/* Slide Navigation - Always visible if multiple siblings exist */}
               {showNavigation && onSelectVersion && (
                 <div className="flex items-center gap-1 text-xs text-gray-500 font-medium select-none mr-2">
                   <button
@@ -160,31 +166,33 @@ export default function MessageBubble({
                 </div>
               )}
 
-              {/* Actions (Copy, Delete/Edit, Regenerate) - Visible on Hover */}
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={handleCopy} title="Copy" className="p-1 hover:bg-gray-200 rounded text-gray-500">
-                  {copied ? <span className="text-xs font-bold text-green-600">✓</span> : <ClipboardDocumentIcon className="h-4 w-4" />}
-                </button>
-
-                {/* Edit for User, Delete for AI */}
-                {isUser && onEdit ? (
-                  <button onClick={() => setIsEditing(true)} title="Edit" className="p-1 hover:bg-gray-200 rounded text-gray-500">
-                    <PencilSquareIcon className="h-4 w-4" />
+              {/* Actions (Copy, Delete/Edit, Regenerate) - Visible on Hover, but hidden if deleted */}
+              {!message.isDeleted && (
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={handleCopy} title="Copy" className="p-1 hover:bg-gray-200 rounded text-gray-500">
+                    {copied ? <span className="text-xs font-bold text-green-600">✓</span> : <ClipboardDocumentIcon className="h-4 w-4" />}
                   </button>
-                ) : (
-                  onDelete && (
-                    <button onClick={handleDeleteClick} title="Delete" className="p-1 hover:bg-red-100 rounded text-gray-500 hover:text-red-600">
-                      <TrashIcon className="h-4 w-4" />
+
+                  {/* Edit for User, Delete for AI */}
+                  {isUser && onEdit ? (
+                    <button onClick={() => setIsEditing(true)} title="Edit" className="p-1 hover:bg-gray-200 rounded text-gray-500">
+                      <PencilSquareIcon className="h-4 w-4" />
                     </button>
-                  )
-                )}
+                  ) : (
+                    onDelete && (
+                      <button onClick={handleDeleteClick} title="Delete" className="p-1 hover:bg-red-100 rounded text-gray-500 hover:text-red-600">
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    )
+                  )}
 
-                {onRegenerate && !isUser && (
-                  <button onClick={onRegenerate} title="Regenerate" className="p-1 hover:bg-gray-200 rounded text-gray-500">
-                    <ArrowPathIcon className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
+                  {onRegenerate && !isUser && (
+                    <button onClick={onRegenerate} title="Regenerate" className="p-1 hover:bg-gray-200 rounded text-gray-500">
+                      <ArrowPathIcon className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

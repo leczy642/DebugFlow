@@ -107,7 +107,7 @@ export default function MessageBubble({
         )}
 
         {!isEditing && (
-          <div className="flex items-center gap-2 mt-1 self-end">
+          <div className={`flex items-center gap-2 mt-1 ${isUser ? "self-end" : "self-start"}`}>
             {/* Slide Navigation */}
             {showNavigation && onSelectVersion && (
               <div className="flex items-center gap-1 text-xs text-gray-500 font-medium select-none mr-2">

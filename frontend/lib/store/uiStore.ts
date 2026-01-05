@@ -7,7 +7,6 @@
  *   - `sidebarOpen`: boolean state
  *   - `toggleSidebar`: function to toggle sidebar state
  */
-
 /**
  * Zustand store for managing UI state across the application.
  * Provides centralized state management for UI elements like sidebar visibility.

@@ -23,6 +23,17 @@ export async function chatWithAI(messages) {
   //return response.choices[0].message.content
 }
 
+export async function streamChatWithAI(messages) {
+  // --- Stream from HF Chat completion model ---------------------------------
+  const stream = hf.chatCompletionStream({
+    model: LLM_CHAT_MODEL,
+    messages: messages,
+    max_tokens: 2048, // Optional: adjust as needed
+  });
+
+  return stream;
+}
+
 export async function generateSessionTitle(message) {
   // Ask the LLM to produce a short, meaningful title describing the user's message.
   // The model is instructed to return ONLY the title (no punctuation like quotes),

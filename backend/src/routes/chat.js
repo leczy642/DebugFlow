@@ -14,7 +14,7 @@
 
 import express from "express";
 import { logger } from "../utils/logger.js";
-import { chatWithAI, generateSessionTitle } from "../services/chatService.js";
+import { streamChatWithAI, generateSessionTitle } from "../services/chatService.js";
 import { retryWithBackoff } from "../utils/retry.js";
 import { withTimeout } from "../utils/withTimeout.js";
 import {
@@ -63,29 +63,33 @@ router.post("/", async (req, res) => {
     }
 
     /* -----------------------------
-       TRANSACTION (USER + AI)
-       Also: if this is the session's first user message, generate a short
-       title from that message and persist it in the same transaction.
+       PREPARE FOR STREAMING
+    ----------------------------- */
+    // Set headers for SSE
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    /* -----------------------------
+       TRANSACTION (USER MESSAGE PERSISTENCE)
+       We persist the user message FIRST, before streaming starts.
     ----------------------------- */
     // check whether this session already has messages
     const sessionState = await getSessionWithMessages(sessionId);
     const isFirstMessage = sessionState?.messages?.length === 0;
 
-    const result = await withTransaction(async (client) => {
+    let userMessageId;
+    let generatedTitle = null;
+
+    // We use a transaction to save the user message and optionally the title
+    await withTransaction(async (client) => {
       // Save user message
-      // If parentId is not provided, we try to find the last message to link to (linear chain)
-      // But for now, if it's null, it's a root message or we let the DB handle it if we want strict trees.
-      // In this app, we'll just pass what we have.
-      // Save user message
-      let userMessageId;
       if (skipUserMessage && parentId) {
-        // If regenerating, we reuse the existing user message (parentId)
         userMessageId = parentId;
       } else {
         userMessageId = await addMessage(sessionId, "user", message, client, parentId);
       }
 
-      let generatedTitle = null;
       // If this is the first user message, generate a short session title
       if (isFirstMessage && !skipUserMessage) {
         try {
@@ -96,80 +100,91 @@ router.post("/", async (req, res) => {
             [sessionId, generatedTitle]
           );
         } catch (err) {
-          // Non-fatal: if title generation fails, continue without blocking chat
           logger.warn("Title generation failed", { error: err instanceof Error ? err.message : err });
           generatedTitle = null;
         }
       }
-
-      // 🔮 TODO: extract logs + retrieve context (RAG step)
-      // const relevantLogs = await retrieveRelevantLogs(message, sessionId);
-
-      /* -----------------------------
-         RECONSTRUCT CONVERSATION HISTORY
-      ----------------------------- */
-      // We need to build the history for the AI context.
-      // We traverse backwards from the current message's parent.
-      // If skipUserMessage is true, we are regenerating for an existing user message (parentId).
-      // If skipUserMessage is false, we just added a new user message (userMessageId).
-
-      const allMessages = sessionState?.messages || [];
-      const msgMap = new Map(allMessages.map((m) => [m.id, m]));
-      const history = [];
-
-      let currentId = skipUserMessage ? parentId : parentId; // Start from the parent of the new message (or the user message itself if regenerating?)
-
-      // Wait, if skipUserMessage is true, parentId IS the user message ID.
-      // If skipUserMessage is false, parentId is the PREVIOUS message ID.
-      // So:
-      if (skipUserMessage) {
-        currentId = parentId;
-      } else {
-        currentId = parentId;
-      }
-
-      while (currentId) {
-        const msg = msgMap.get(currentId);
-        if (!msg) break;
-        if (!msg.isDeleted) {
-          history.unshift({ role: msg.role, content: msg.content });
-        }
-        currentId = msg.parentId;
-      }
-
-      // If this is a new user message (not regenerating), append it to history
-      if (!skipUserMessage) {
-        history.push({ role: "user", content: message });
-      }
-
-      // Call AI model
-      const aiReply = await withTimeout(
-        () => retryWithBackoff(() => chatWithAI(history)),
-        LLM_CHAT_TIMEOUT_MS
-      );
-
-      // Save assistant message, linked to user message
-      await addMessage(sessionId, "assistant", aiReply, client, userMessageId);
-
-
-      return { aiReply, generatedTitle };
     });
-    const reply = result.aiReply;
-    const generatedTitle = result.generatedTitle;
 
-    const responsePayload = { success: true, reply };
-    if (generatedTitle) responsePayload.title = generatedTitle;
+    // Send the title immediately if generated
+    if (generatedTitle) {
+      res.write(`data: ${JSON.stringify({ title: generatedTitle })}\n\n`);
+    }
 
-    return res.status(200).json(responsePayload);
+    /* -----------------------------
+       RECONSTRUCT CONVERSATION HISTORY
+    ----------------------------- */
+    const allMessages = sessionState?.messages || [];
+    const msgMap = new Map(allMessages.map((m) => [m.id, m]));
+    const history = [];
+
+    let currentId = skipUserMessage ? parentId : parentId;
+    if (skipUserMessage) {
+      currentId = parentId;
+    } else {
+      currentId = parentId;
+    }
+
+    while (currentId) {
+      const msg = msgMap.get(currentId);
+      if (!msg) break;
+      if (!msg.isDeleted) {
+        history.unshift({ role: msg.role, content: msg.content });
+      }
+      currentId = msg.parentId;
+    }
+
+    if (!skipUserMessage) {
+      history.push({ role: "user", content: message });
+    }
+
+    /* -----------------------------
+       STREAMING RESPONSE
+    ----------------------------- */
+    let fullAiReply = "";
+
+    try {
+      const stream = await streamChatWithAI(history);
+
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || "";
+        if (content) {
+          fullAiReply += content;
+          res.write(`data: ${JSON.stringify({ content })}\n\n`);
+        }
+      }
+
+      // Stream finished
+      res.write(`data: [DONE]\n\n`);
+      res.end();
+
+      // Persist the full AI response
+      await withTransaction(async (client) => {
+        await addMessage(sessionId, "assistant", fullAiReply, client, userMessageId);
+      });
+
+    } catch (streamError) {
+      logger.error("Streaming error", { error: streamError });
+      res.write(`data: ${JSON.stringify({ error: "Error generating response" })}\n\n`);
+      res.end();
+    }
+
   } catch (error) {
     logger.error("Chat error", {
       error: error instanceof Error ? error.message : error,
     });
 
-    return res.status(500).json({
-      success: false,
-      error: "No response from reasoning model",
-    });
+    // If headers haven't been sent, send JSON error
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        error: "Server error",
+      });
+    } else {
+      // If headers sent (streaming started), send error event
+      res.write(`data: ${JSON.stringify({ error: "Server error" })}\n\n`);
+      res.end();
+    }
   }
 });
 

@@ -170,15 +170,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const controller = new AbortController();
 
     set((state) => {
-      // Note: The backend will assign an ID. If we want to link the *next* assistant message to this,
-      // we need the ID. But `sendMessage` is async.
-      // The backend `chat` endpoint now links them.
-
-      // If skipping user message (regenerating), we don't add a new user message to the store optimistically
-      // because it already exists. We just want to trigger the AI response.
-      // However, we might want to show a loading state.
-      // For now, let's just NOT add the user message if skipUserMessage is true.
-
       let newSessions = state.sessions;
       if (!skipUserMessage) {
         const userMessage: Message = { role: "user", content, parentId: effectiveParentId || null };
@@ -219,36 +210,104 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         signal: controller.signal,
       });
 
-      const data = await res.json();
-
-      if (res.ok) {
-        // If backend generated a session title for the first message, apply it to local sessions
-        if (data.title) {
-          set((state) => {
-            const found = state.sessions.some((s) => s.id === currentSessionId);
-            const updatedSessions = found
-              ? state.sessions.map((s) => (s.id === currentSessionId ? { ...s, title: data.title } : s))
-              : [{ id: currentSessionId!, title: data.title, messages: [], pinned: false }, ...state.sessions];
-
-            return {
-              sessions: updatedSessions,
-              // mark it recently updated so UI can react immediately
-              lastUpdatedSessionId: currentSessionId,
-            };
-          });
-        }
-
-        // We reload messages to get the correct IDs and structure from DB
-        // This is a bit heavy but ensures consistency for now.
-        await get().selectSession(currentSessionId);
-
-        // Clear loading state since we are done
-        set({ awaitingSessionId: null, activeRequestId: null });
-
-        // get().receiveMessage(data.reply, requestId);
-      } else {
-        get().receiveMessage("⚠️ Error processing request", requestId);
+      if (!res.ok) {
+        throw new Error("Failed to send message");
       }
+
+      if (!res.body) return;
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+      let assistantMessageId = "";
+      let accumulatedContent = "";
+
+      // Create a placeholder message for the assistant
+      set((state) => {
+        // Only add if we are the active request
+        if (state.activeRequestId !== requestId) return {};
+
+        // Generate a temporary ID for the assistant message so we can update it
+        assistantMessageId = `temp_${Date.now()}`;
+        const assistantMessage: Message = {
+          id: assistantMessageId,
+          role: "assistant",
+          content: "",
+          parentId: effectiveParentId || (skipUserMessage ? parentId : null) // Logic is tricky here, but essentially we link to the user message
+        };
+
+        // If we just added a user message, we need to link to IT.
+        // But we don't have its ID yet (it was optimistic). 
+        // Actually, for optimistic updates, we usually don't have IDs.
+        // Let's just append. The re-fetch will fix IDs.
+
+        return {
+          messages: [...state.messages, assistantMessage],
+          awaitingSessionId: null, // Clear loading state immediately as we start streaming
+        };
+      });
+
+      while (!done) {
+        const { value, done: doneReading } = await reader.read();
+        done = doneReading;
+        const chunkValue = decoder.decode(value, { stream: !done });
+
+        const lines = chunkValue.split("\n");
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const dataStr = line.slice(6);
+            if (dataStr === "[DONE]") {
+              done = true;
+              break;
+            }
+
+            try {
+              const data = JSON.parse(dataStr);
+
+              if (data.title) {
+                // Handle title update
+                set((state) => {
+                  const found = state.sessions.some((s) => s.id === currentSessionId);
+                  const updatedSessions = found
+                    ? state.sessions.map((s) => (s.id === currentSessionId ? { ...s, title: data.title } : s))
+                    : [{ id: currentSessionId!, title: data.title, messages: [], pinned: false }, ...state.sessions];
+                  return { sessions: updatedSessions, lastUpdatedSessionId: currentSessionId };
+                });
+              }
+
+              if (data.content) {
+                accumulatedContent += data.content;
+
+                // Update the assistant message in the store
+                set((state) => ({
+                  messages: state.messages.map((m) =>
+                    m.id === assistantMessageId ? { ...m, content: accumulatedContent } : m
+                  )
+                }));
+              }
+
+              if (data.error) {
+                get().receiveMessage("⚠️ " + data.error, requestId);
+              }
+
+            } catch (e) {
+              console.error("Error parsing SSE data", e);
+            }
+          }
+        }
+      }
+
+      // After stream is done, we might want to refresh to get the real DB IDs
+      // But for smooth UX, maybe we wait or just let it be until next interaction.
+      // Let's do a silent refresh in background after a short delay to reconcile IDs
+      setTimeout(() => {
+        if (get().currentSessionId === currentSessionId) {
+          get().selectSession(currentSessionId);
+        }
+      }, 1000);
+
+      set({ activeRequestId: null, abortController: null });
+
     } catch (err: any) {
       if (err.name === 'AbortError') {
         return;

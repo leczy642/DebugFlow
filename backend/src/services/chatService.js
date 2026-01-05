@@ -3,20 +3,18 @@
 // PURPOSE:
 // - Handles conversational AI logic (HuggingFace, OpenAI, or DeepSeek)
 
-import "../utils/loadEnv.js";  
+import "../utils/loadEnv.js";
 import { InferenceClient } from "@huggingface/inference";
 
 const LLM_CHAT_MODEL = process.env.HUGGINGFACE_CHAT_MODEL || "deepseek-ai/DeepSeek-V3.1:novita";
 
 const hf = new InferenceClient(process.env.HUGGINGFACE_API_KEY);
 
-export async function chatWithAI(message) {
+export async function chatWithAI(messages) {
   // --- Send to HF Chat completion model -------------------------------------
   const response = await hf.chatCompletion({
     model: LLM_CHAT_MODEL,
-    messages: [
-      { role: "user", content: message }
-    ]
+    messages: messages
   });
 
   // Extract the actual AI reply

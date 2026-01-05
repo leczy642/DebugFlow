@@ -105,9 +105,46 @@ router.post("/", async (req, res) => {
       // 🔮 TODO: extract logs + retrieve context (RAG step)
       // const relevantLogs = await retrieveRelevantLogs(message, sessionId);
 
+      /* -----------------------------
+         RECONSTRUCT CONVERSATION HISTORY
+      ----------------------------- */
+      // We need to build the history for the AI context.
+      // We traverse backwards from the current message's parent.
+      // If skipUserMessage is true, we are regenerating for an existing user message (parentId).
+      // If skipUserMessage is false, we just added a new user message (userMessageId).
+
+      const allMessages = sessionState?.messages || [];
+      const msgMap = new Map(allMessages.map((m) => [m.id, m]));
+      const history = [];
+
+      let currentId = skipUserMessage ? parentId : parentId; // Start from the parent of the new message (or the user message itself if regenerating?)
+
+      // Wait, if skipUserMessage is true, parentId IS the user message ID.
+      // If skipUserMessage is false, parentId is the PREVIOUS message ID.
+      // So:
+      if (skipUserMessage) {
+        currentId = parentId;
+      } else {
+        currentId = parentId;
+      }
+
+      while (currentId) {
+        const msg = msgMap.get(currentId);
+        if (!msg) break;
+        if (!msg.isDeleted) {
+          history.unshift({ role: msg.role, content: msg.content });
+        }
+        currentId = msg.parentId;
+      }
+
+      // If this is a new user message (not regenerating), append it to history
+      if (!skipUserMessage) {
+        history.push({ role: "user", content: message });
+      }
+
       // Call AI model
       const aiReply = await withTimeout(
-        () => retryWithBackoff(() => chatWithAI(message)),
+        () => retryWithBackoff(() => chatWithAI(history)),
         LLM_CHAT_TIMEOUT_MS
       );
 

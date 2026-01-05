@@ -45,6 +45,7 @@ export default function InputBar() {
   const startNewSession = useChatStore((s) => s.startNewSession);
   const currentSessionId = useChatStore((s) => s.currentSessionId);
   const awaitingSessionId = useChatStore((s) => s.awaitingSessionId);
+  const isStreaming = useChatStore((s) => s.isStreaming);
   const stopGeneration = useChatStore((s) => s.stopGeneration);
 
   // UI store hooks
@@ -61,7 +62,7 @@ export default function InputBar() {
     setText("");
   }, [currentSessionId]);
 
-  const isAwaitingResponse = !!currentSessionId && awaitingSessionId === currentSessionId;
+  const isAwaitingResponse = (!!currentSessionId && awaitingSessionId === currentSessionId) || isStreaming;
 
   // Handle sending message
   const handleSend = async () => {
@@ -80,8 +81,9 @@ export default function InputBar() {
     }
 
     // Send message via chatStore
-    await sendMessage(text);
+    // We clear text immediately to prevent blocking UI
     setText("");
+    await sendMessage(text);
   };
 
   /* -----------------------------

@@ -56,6 +56,7 @@ type ChatStore = {
   pendingSession: boolean;
   lastUpdatedSessionId: string | null;
   awaitingSessionId: string | null;
+  isStreaming: boolean;
   abortController: AbortController | null;
 
   // Tracks the in-flight request that should be accepted when a reply arrives.
@@ -91,6 +92,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   pendingSession: false,
   lastUpdatedSessionId: null,
   awaitingSessionId: null,
+  isStreaming: false,
   abortController: null,
   activeRequestId: null,
 
@@ -168,11 +170,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Create a small locally-unique request id so we can ignore stale replies
     const requestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const controller = new AbortController();
+    const tempUserMessageId = `temp_user_${Date.now()}`;
 
     set((state) => {
       let newSessions = state.sessions;
       if (!skipUserMessage) {
-        const userMessage: Message = { role: "user", content, parentId: effectiveParentId || null };
+        const userMessage: Message = {
+          id: tempUserMessageId,
+          role: "user",
+          content,
+          parentId: effectiveParentId || null
+        };
         // Reorder sessions logic...
         const currentSession = state.sessions.find((s) => s.id === currentSessionId);
         if (currentSession && !currentSession.pinned) {
@@ -185,6 +193,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           messages: [...state.messages, userMessage],
           sessions: newSessions,
           awaitingSessionId: currentSessionId,
+          isStreaming: true,
           activeRequestId: requestId,
           abortController: controller,
         };
@@ -192,6 +201,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       return {
         awaitingSessionId: currentSessionId,
+        isStreaming: true,
         activeRequestId: requestId,
         abortController: controller,
       };
@@ -228,22 +238,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         if (state.activeRequestId !== requestId) return {};
 
         // Generate a temporary ID for the assistant message so we can update it
-        assistantMessageId = `temp_${Date.now()}`;
+        assistantMessageId = `temp_ai_${Date.now()}`;
+
+        // IMPORTANT: Link to the temp user message ID if we just created one.
+        // If regenerating (skipUserMessage), link to the existing parentId.
+        const parentIdForAssistant = skipUserMessage ? parentId : tempUserMessageId;
+
         const assistantMessage: Message = {
           id: assistantMessageId,
           role: "assistant",
           content: "",
-          parentId: effectiveParentId || (skipUserMessage ? parentId : null) // Logic is tricky here, but essentially we link to the user message
+          parentId: parentIdForAssistant
         };
-
-        // If we just added a user message, we need to link to IT.
-        // But we don't have its ID yet (it was optimistic). 
-        // Actually, for optimistic updates, we usually don't have IDs.
-        // Let's just append. The re-fetch will fix IDs.
 
         return {
           messages: [...state.messages, assistantMessage],
           awaitingSessionId: null, // Clear loading state immediately as we start streaming
+          // isStreaming remains true
         };
       });
 
@@ -306,15 +317,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
       }, 1000);
 
-      set({ activeRequestId: null, abortController: null });
+      set({ activeRequestId: null, abortController: null, isStreaming: false });
 
     } catch (err: any) {
       if (err.name === 'AbortError') {
         return;
       }
       get().receiveMessage("⚠️ Error processing request", requestId);
+      set({ isStreaming: false });
     } finally {
-      set({ abortController: null });
+      set({ abortController: null, isStreaming: false });
     }
   },
 
@@ -535,13 +547,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
      - Reset pending/awaiting flags
   ----------------------------- */
   resetToDefault: () =>
-    set({ currentSessionId: null, messages: [], pendingSession: false, awaitingSessionId: null, activeRequestId: null, abortController: null }),
+    set({ currentSessionId: null, messages: [], pendingSession: false, awaitingSessionId: null, activeRequestId: null, abortController: null, isStreaming: false }),
 
   stopGeneration: () => {
     const { abortController } = get();
     if (abortController) {
       abortController.abort();
     }
-    set({ awaitingSessionId: null, activeRequestId: null, abortController: null });
+    set({ awaitingSessionId: null, activeRequestId: null, abortController: null, isStreaming: false });
   },
 }));

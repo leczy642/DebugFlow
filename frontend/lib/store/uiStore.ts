@@ -39,17 +39,17 @@ export const useUIStore = create<UIStore>((set) => ({
   sidebarOpen: true,
   // Default: input bar starts centered
   inputBarCentered: true,
-  
+
   toggleSidebar: () =>
     set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-  
+
   setInputBarCentered: (value) =>
     set({ inputBarCentered: value }),
-  
+
   // Convenience: center input bar
   centerInput: () =>
     set({ inputBarCentered: true }),
-  
+
   // Convenience: dock input bar at bottom
   dockInput: () => {
     console.log("dockInput called - setting inputBarCentered to false"); // Debug log

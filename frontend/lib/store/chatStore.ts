@@ -69,7 +69,7 @@ type ChatStore = {
   loadSessions: () => Promise<void>;
   startNewSession: () => Promise<void>;
   selectSession: (id: string) => Promise<void>;
-  sendMessage: (content: string, parentId?: string, skipUserMessage?: boolean) => Promise<void>;
+  sendMessage: (content: string, parentId?: string | null, skipUserMessage?: boolean) => Promise<void>;
   editMessage: (messageId: string, newContent: string) => Promise<void>;
   regenerateResponse: (messageId: string) => Promise<void>;
   // Optional requestId used to ignore stale replies (when user started a new session)
@@ -152,7 +152,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   /* ----------------------------------------------------------------
      SEND MESSAGE TO BACKEND + HANDLE RESPONSE
   ---------------------------------------------------------------- */
-  sendMessage: async (content: string, parentId?: string, skipUserMessage?: boolean) => {
+  sendMessage: async (content: string, parentId?: string | null, skipUserMessage?: boolean) => {
     const { currentSessionId, messages } = get();
     if (!currentSessionId) return;
 
@@ -160,7 +160,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // This ensures linear conversation history.
     // If skipUserMessage is true (regeneration), parentId MUST be provided by caller.
     let effectiveParentId = parentId;
-    if (!effectiveParentId && !skipUserMessage && messages.length > 0) {
+    if (effectiveParentId === undefined && !skipUserMessage && messages.length > 0) {
       effectiveParentId = messages[messages.length - 1].id;
     }
 
@@ -295,7 +295,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // But here we explicitly want to use the ORIGINAL parentId, not the "last message" ID.
     // So we must pass it explicitly.
 
-    await sendMessage(newContent, originalMessage.parentId || undefined);
+    await sendMessage(newContent, originalMessage.parentId);
   },
 
   deleteMessage: async (id: string) => {

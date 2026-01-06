@@ -141,12 +141,34 @@ router.post("/", async (req, res) => {
     /* -----------------------------
        STREAMING RESPONSE
     ----------------------------- */
+    /* -----------------------------
+       STREAMING RESPONSE
+    ----------------------------- */
     let fullAiReply = "";
+    let isAborted = false;
+
+    // Detect client disconnect
+    const onDisconnect = () => {
+      if (!isAborted) {
+        isAborted = true;
+        logger.info(`Client disconnected for session ${sessionId}, aborting stream`);
+      }
+    };
+
+    req.on("close", onDisconnect);
+    req.on("aborted", onDisconnect);
+    // Sometimes the response close event fires instead/first
+    res.on("close", onDisconnect);
 
     try {
       const stream = await streamChatWithAI(history);
 
       for await (const chunk of stream) {
+        if (isAborted) {
+          logger.info(`Stream aborted for session ${sessionId}`);
+          break;
+        }
+
         const content = chunk.choices[0]?.delta?.content || "";
         if (content) {
           fullAiReply += content;
@@ -154,19 +176,29 @@ router.post("/", async (req, res) => {
         }
       }
 
-      // Stream finished
-      res.write(`data: [DONE]\n\n`);
-      res.end();
+      if (!isAborted) {
+        // Stream finished normally
+        res.write(`data: [DONE]\n\n`);
+        res.end();
+      } else {
+        // Stream aborted
+        res.end();
+      }
 
-      // Persist the full AI response
-      await withTransaction(async (client) => {
-        await addMessage(sessionId, "assistant", fullAiReply, client, userMessageId);
-      });
+      // Persist the AI response (full or partial)
+      // Only persist if we have some content
+      if (fullAiReply) {
+        await withTransaction(async (client) => {
+          await addMessage(sessionId, "assistant", fullAiReply, client, userMessageId);
+        });
+      }
 
     } catch (streamError) {
       logger.error("Streaming error", { error: streamError });
-      res.write(`data: ${JSON.stringify({ error: "Error generating response" })}\n\n`);
-      res.end();
+      if (!isAborted) {
+        res.write(`data: ${JSON.stringify({ error: "Error generating response" })}\n\n`);
+        res.end();
+      }
     }
 
   } catch (error) {

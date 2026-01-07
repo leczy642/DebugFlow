@@ -105,7 +105,7 @@ export default function InputBar() {
 
           <div className="relative">
             <textarea
-              className="w-full min-h-[100px] max-h-40 resize-none
+              className="w-full min-h-[110px] max-h-64 resize-none
                          border border-gray-300 rounded-xl
                          py-3 px-4 bg-gray-50
                          focus:outline-none focus:ring-2 focus:ring-blue-500
@@ -155,7 +155,7 @@ export default function InputBar() {
     <div className="p-4 bg-white">
       <div className="relative max-w-4xl mx-auto">
         <textarea
-          className="w-full border border-gray-300 rounded-xl
+          className="w-full min-h-[110px] border border-gray-300 rounded-xl
                      py-3 pl-4 pr-12 bg-gray-50 resize-none
                      focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="Ask something… paste logs… describe an error…"

@@ -16,7 +16,7 @@ type Message = {
 };
 
 export default function ChatWindow() {
-  const { messages, currentSessionId, awaitingSessionId, regenerateResponse, deleteMessage } = useChatStore();
+  const { messages, currentSessionId, awaitingSessionId, regenerateResponse, deleteMessage, isStreaming } = useChatStore();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -99,14 +99,27 @@ export default function ChatWindow() {
 
     // Only auto-scroll when the last message is from the assistant
     if (last.role === "assistant") {
-      // smooth scroll the bottom sentinel into view
-      if (bottomRef.current) {
-        bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
-      } else if (containerRef.current) {
-        containerRef.current.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" });
+      const el = containerRef.current;
+      if (!el) return;
+
+      // If streaming, only auto-scroll if user is near the bottom
+      if (isStreaming) {
+        const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+        if (isNearBottom) {
+          if (bottomRef.current) {
+            bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+          }
+        }
+      } else {
+        // If not streaming (e.g. initial load), force scroll to bottom
+        if (bottomRef.current) {
+          bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+        } else {
+          el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+        }
       }
     }
-  }, [thread, currentSessionId]);
+  }, [thread, currentSessionId, isStreaming]);
 
   // show/hide the scroll-to-bottom button based on scroll position
   useEffect(() => {

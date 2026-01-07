@@ -161,6 +161,7 @@ export default function ChatWindow() {
               onDelete={item.message.id ? () => deleteMessage(item.message.id!) : undefined}
               onEdit={item.message.id ? (newContent) => useChatStore.getState().editMessage(item.message.id!, newContent) : undefined}
               onRestore={item.message.id ? () => useChatStore.getState().restoreMessage(item.message.id!) : undefined}
+              isStreaming={isStreaming}
             />
           ))}
 

@@ -1,6 +1,7 @@
 import { ClipboardDocumentIcon, TrashIcon, ArrowPathIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, ArrowUturnLeftIcon } from "@heroicons/react/24/outline";
 import { useState, useEffect, useRef } from "react";
 import DeleteConfirmationModal from "./DeleteConfirmationModal";
+import StreamingMarkdown from "./StreamingMarkdown";
 
 type Message = {
   id?: string;
@@ -19,6 +20,7 @@ type Props = {
   onDelete?: () => void;
   onEdit?: (newContent: string) => void;
   onRestore?: () => void;
+  isStreaming?: boolean;
 };
 
 export default function MessageBubble({
@@ -29,7 +31,8 @@ export default function MessageBubble({
   onRegenerate,
   onDelete,
   onEdit,
-  onRestore
+  onRestore,
+  isStreaming = false
 }: Props) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
@@ -124,14 +127,19 @@ export default function MessageBubble({
       );
     }
 
+    // User messages: plain text with styling
+    // Assistant messages: markdown with syntax highlighting
+    if (isUser) {
+      return (
+        <div className="rounded-lg whitespace-pre-wrap relative bg-sky-100 text-gray-900 p-3 text-left">
+          {message.content}
+        </div>
+      );
+    }
+
     return (
-      <div
-        className={`
-          rounded-lg whitespace-pre-wrap relative
-          ${isUser ? "bg-sky-100 text-gray-900 p-3 text-left" : "text-gray-900 px-1 py-1 text-left"}
-        `}
-      >
-        {message.content}
+      <div className="rounded-lg relative text-gray-900 px-1 py-1 text-left">
+        <StreamingMarkdown content={message.content} isStreaming={isStreaming} />
       </div>
     );
   };

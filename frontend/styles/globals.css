@@ -20,3 +20,71 @@ body { @apply bg-gray-50 text-gray-900; }
 .session-enter {
 	animation: sessionEnter 300ms cubic-bezier(.22,.9,.31,1) both;
 }
+
+/* ============================
+   Streaming Markdown Styles
+   ============================ */
+
+/* Inline code styling */
+.streaming-markdown .inline-code {
+  background-color: #f3f4f6;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875em;
+  color: #1f2937;
+}
+
+/* Code block wrapper */
+.streaming-markdown .code-block-wrapper {
+  margin: 1rem 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  background-color: #fafafa;
+}
+
+/* Code block header with language label and copy button */
+.streaming-markdown .code-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background-color: #f3f4f6;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.streaming-markdown .code-block-language {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: lowercase;
+}
+
+.streaming-markdown .code-block-copy {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  color: #6b7280;
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.streaming-markdown .code-block-copy:hover {
+  background-color: #e5e7eb;
+  color: #1f2937;
+}
+
+/* Ensure syntax highlighter doesn't add extra margin */
+.streaming-markdown pre {
+  margin: 0 !important;
+  padding: 1rem !important;
+  overflow-x: auto;
+}
+
+/* Smooth content updates during streaming */
+.streaming-markdown {
+  transition: opacity 0.1s ease;
+}

@@ -138,7 +138,7 @@ export default function MessageBubble({
     }
 
     return (
-      <div className="rounded-lg relative text-gray-900 px-1 py-1 text-left">
+      <div className="rounded-lg relative text-gray-900 px-1 py-1 text-left w-full overflow-hidden">
         <StreamingMarkdown content={message.content} isStreaming={isStreaming} />
       </div>
     );
@@ -147,7 +147,7 @@ export default function MessageBubble({
   return (
     <>
       <div className={`group flex my-3 ${isUser ? "justify-end" : "justify-start"}`}>
-        <div className={`flex flex-col max-w-[90%] ${isUser ? "items-end" : "items-start"}`}>
+        <div className={`flex flex-col min-w-0 ${isUser ? "max-w-[90%] items-end" : "w-full items-start"}`}>
 
           {renderContent()}
 

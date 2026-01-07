@@ -3,6 +3,7 @@
 
 import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 
@@ -37,6 +38,7 @@ export default function StreamingMarkdown({ content, isStreaming = false }: Prop
     return (
         <div className="streaming-markdown">
             <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
                 components={{
                     // Custom renderer for code blocks
                     code({ node, className, children, ...props }) {
@@ -128,6 +130,31 @@ export default function StreamingMarkdown({ content, isStreaming = false }: Prop
                                 {children}
                             </a>
                         );
+                    },
+                    // Table styling - streaming aware with horizontal scroll
+                    table({ children }) {
+                        return (
+                            <div className="table-scroll-container">
+                                <table className="markdown-table">
+                                    {children}
+                                </table>
+                            </div>
+                        );
+                    },
+                    thead({ children }) {
+                        return <thead className="table-head">{children}</thead>;
+                    },
+                    tbody({ children }) {
+                        return <tbody className="table-body">{children}</tbody>;
+                    },
+                    tr({ children }) {
+                        return <tr className="table-row">{children}</tr>;
+                    },
+                    th({ children }) {
+                        return <th className="table-header-cell">{children}</th>;
+                    },
+                    td({ children }) {
+                        return <td className="table-cell">{children}</td>;
                     },
                 }}
             >

@@ -108,8 +108,7 @@ export default function InputBar() {
               className="w-full min-h-[110px] max-h-64 resize-none
                          border border-gray-300 rounded-xl
                          py-3 px-4 bg-gray-50
-                         focus:outline-none focus:ring-2 focus:ring-blue-500
-                         placeholder:text-gray-500 text-gray-800 text-sm"
+                         focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Ask something… paste logs… describe an error…"
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -183,7 +182,7 @@ export default function InputBar() {
           <button
             onClick={handleSend}
             disabled={!text.trim()}
-            className="absolute right-2 top-1/2 -translate-y-1/2
+            className="absolute right-2 bottom-0 -translate-y-1/2
                        bg-blue-600 text-white p-2 rounded-lg
                        hover:bg-blue-700 disabled:bg-gray-300"
           >

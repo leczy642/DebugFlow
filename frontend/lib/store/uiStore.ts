@@ -51,7 +51,7 @@ export const useUIStore = create<UIStore>((set) => ({
 
   // Convenience: dock input bar at bottom
   dockInput: () => {
-    console.log("dockInput called - setting inputBarCentered to false"); // Debug log
+    //console.log("dockInput called - setting inputBarCentered to false"); // Debug log
     set({ inputBarCentered: false });
   },
 }));

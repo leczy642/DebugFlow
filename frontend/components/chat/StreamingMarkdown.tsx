@@ -1,7 +1,7 @@
 // components/chat/StreamingMarkdown.tsx
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -35,6 +35,15 @@ export default function StreamingMarkdown({ content, isStreaming = false }: Prop
         return content;
     }, [content, isStreaming]);
 
+    // State for copy feedback - each code block has its own state
+    const [copied, setCopied] = useState(false);
+
+    // Handle copy with proper parameter passing
+    const handleCopy = (codeSnippet: string) => {
+        navigator.clipboard.writeText(codeSnippet);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
     return (
         <div className="streaming-markdown">
             <ReactMarkdown
@@ -61,16 +70,22 @@ export default function StreamingMarkdown({ content, isStreaming = false }: Prop
                         const language = match ? match[1] : "text";
                         const codeString = String(children).replace(/\n$/, "");
 
+
                         return (
                             <div className="code-block-wrapper">
                                 <div className="code-block-header">
                                     <span className="code-block-language">{language}</span>
                                     <button
                                         className="code-block-copy"
-                                        onClick={() => navigator.clipboard.writeText(codeString)}
+                                        onClick={() => handleCopy(codeString)}
                                         title="Copy code"
                                     >
-                                        Copy
+                                        {copied ? (
+                                            <span className="flex items-center gap-1">
+                                                <span className="text-green-600 font-bold">✓</span>
+                                                Copied
+                                            </span>
+                                        ) : 'Copy'}
                                     </button>
                                 </div>
                                 <SyntaxHighlighter

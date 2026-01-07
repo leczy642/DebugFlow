@@ -152,7 +152,7 @@ export default function InputBar() {
      DOCKED MODE (ACTIVE CHAT)
   ----------------------------- */
   return (
-    <div className="p-4 border-t bg-white">
+    <div className="p-4 bg-white">
       <div className="relative max-w-4xl mx-auto">
         <textarea
           className="w-full border border-gray-300 rounded-xl

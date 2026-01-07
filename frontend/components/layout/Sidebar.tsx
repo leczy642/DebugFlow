@@ -57,10 +57,10 @@ export default function Sidebar() {
 
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
   const [dropdownSessionId, setDropdownSessionId] = useState<string | null>(null);
-  const [dropdownPosition, setDropdownPosition] = useState({ 
-    top: 0, 
-    right: 0, 
-    above: false 
+  const [dropdownPosition, setDropdownPosition] = useState({
+    top: 0,
+    right: 0,
+    above: false
   });
   const [renameModal, setRenameModal] = useState<{
     id: string;
@@ -75,18 +75,18 @@ export default function Sidebar() {
     e.stopPropagation();
     const button = e.currentTarget;
     const rect = button.getBoundingClientRect();
-    
+
     // Estimate dropdown height (5 items + padding + borders ≈ 170px)
     const estimatedDropdownHeight = 170;
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
     const gap = 4; // Gap between button and dropdown
-    
+
     // Position above if there's not enough space below AND there's more space above
     const shouldPositionAbove = spaceBelow < estimatedDropdownHeight + gap && spaceAbove >= estimatedDropdownHeight + gap;
 
     setDropdownPosition({
-      top: shouldPositionAbove 
+      top: shouldPositionAbove
         ? rect.top + window.scrollY - estimatedDropdownHeight - gap
         : rect.bottom + window.scrollY + gap,
       right: window.innerWidth - rect.right - window.scrollX + gap - 25,
@@ -259,7 +259,7 @@ export default function Sidebar() {
                       <BookmarkIconSolid className="w-4 h-4" />
                     </button>
                   )}
-                  
+
                   <a
                     onClick={() => selectSession(session.id)}
                     className={`
@@ -299,7 +299,7 @@ export default function Sidebar() {
         )}
 
         {/* FOOTER */}
-        <div className="mt-auto px-3 border-t border-[#E5E5E5] h-[83px]">
+        <div className="mt-auto px-3 h-[83px]">
           <div className="h-full flex items-center justify-between">
             {sidebarOpen && <div className="text-sm text-[#1A1A1A]">Alex</div>}
             <button className="p-2 rounded-lg hover:bg-[#EAEAEA] transition">

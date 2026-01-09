@@ -1,3 +1,43 @@
+// components/chat/DeleteConfirmationModal.tsx
+/**
+ * DeleteConfirmationModal.tsx
+ * -----------------------------------------------------------------------------
+ * PURPOSE:
+ * Renders a modal dialog that confirms deletion of a chat message before proceeding.
+ * Provides a safety mechanism to prevent accidental data loss with clear user feedback.
+ *
+ * ROLE IN PROJECT:
+ * - Safety layer for destructive operations (message deletion)
+ * - User experience component that follows accessibility best practices
+ * - Reusable confirmation dialog for delete operations throughout the chat interface
+ *
+ * WHAT THIS FILE DOES:
+ * 1. Displays a visually distinct warning modal with icon and explanatory text
+ * 2. Handles both confirmation and cancellation flows
+ * 3. Implements accessible dialog patterns via Headless UI
+ * 4. Manages focus trapping and keyboard navigation
+ * 5. Provides smooth enter/exit animations for modal transitions
+ *
+ * INPUTS:
+ * - `open`: Boolean controlling modal visibility
+ * - `onClose`: Callback to close the modal without action
+ * - `onConfirm`: Callback to execute when user confirms deletion
+ *
+ * OUTPUTS:
+ * - Modal visibility state changes
+ * - Delete confirmation or cancellation actions
+ * - Focus management for keyboard users
+ *
+ * IMPORTANT:
+ * This component follows Headless UI accessibility patterns and includes:
+ * - Proper ARIA labels and roles
+ * - Focus trapping within the modal
+ * - Escape key and backdrop click dismissal
+ * - Smooth animations for better UX
+ * -----------------------------------------------------------------------------
+ */
+
+
 import { Fragment, useRef } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';

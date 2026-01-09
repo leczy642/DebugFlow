@@ -1,3 +1,51 @@
+// components/chat/MessageBubble.tsx
+/**
+ * MessageBubble.tsx
+ * -----------------------------------------------------------------------------
+ * PURPOSE:
+ * Renders individual chat message bubbles with comprehensive interaction controls.
+ * Handles multiple states: active messages, deleted messages, editing mode,
+ * and version navigation for branching conversations.
+ *
+ * ROLE IN PROJECT:
+ * - Core building block of chat interface displaying all message content
+ * - Provides user interaction controls (copy, edit, delete, regenerate, restore)
+ * - Manages version navigation for threaded conversations
+ * - Handles both user and assistant message rendering with appropriate styling
+ *
+ * WHAT THIS FILE DOES:
+ * 1. Renders message content with role-specific styling (user vs assistant)
+ * 2. Provides interactive controls with hover visibility for cleaner UI
+ * 3. Manages editing state with auto-resizing textarea
+ * 4. Handles version navigation through sibling messages at same thread level
+ * 5. Shows different UI states: active, deleted, and editing modes
+ * 6. Integrates with DeleteConfirmationModal for safe deletion operations
+ * 7. Uses StreamingMarkdown component for assistant message rendering
+ *
+ * INPUTS:
+ * - `message`: The message object to display (content, role, deleted status)
+ * - `siblings`: Array of alternative messages at same thread level for versioning
+ * - `currentVersionIndex`: Which sibling is currently selected
+ * - `onSelectVersion`: Callback when user selects different message version
+ * - `onRegenerate`: Callback to regenerate assistant response
+ * - `onDelete`: Callback to soft-delete message (moves to deleted state)
+ * - `onEdit`: Callback to edit user message content
+ * - `onRestore`: Callback to restore deleted message
+ * - `isStreaming`: Whether streaming is active for this assistant message
+ *
+ * OUTPUTS:
+ * - Visual message bubble with interactive controls
+ * - User actions forwarded to parent component via callbacks
+ * - Edit mode UI with save/cancel functionality
+ * - Delete confirmation modal when triggered
+ *
+ * IMPORTANT:
+ * This component manages complex state transitions between editing, deleted,
+ * and active states while maintaining proper accessibility and user experience.
+ * The hover-based controls reduce visual clutter while keeping functionality accessible.
+ * -----------------------------------------------------------------------------
+ */
+
 import { ClipboardDocumentIcon, TrashIcon, ArrowPathIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, ArrowUturnLeftIcon } from "@heroicons/react/24/outline";
 import { useState, useEffect, useRef } from "react";
 import DeleteConfirmationModal from "./DeleteConfirmationModal";
@@ -34,6 +82,7 @@ export default function MessageBubble({
   onRestore,
   isStreaming = false
 }: Props) {
+  // Component state
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -41,10 +90,12 @@ export default function MessageBubble({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Sync edit content with message updates
   useEffect(() => {
     setEditContent(message.content);
   }, [message.content]);
 
+  // Handle textarea auto-resize when entering edit mode
   useEffect(() => {
     if (isEditing && textareaRef.current) {
       textareaRef.current.focus();
@@ -53,12 +104,14 @@ export default function MessageBubble({
     }
   }, [isEditing]);
 
+  // Copy message content to clipboard
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Save edited content and exit edit mode
   const handleSaveEdit = () => {
     if (onEdit && editContent.trim() !== message.content) {
       onEdit(editContent);
@@ -66,24 +119,29 @@ export default function MessageBubble({
     setIsEditing(false);
   };
 
+  // Cancel editing and restore original content
   const handleCancelEdit = () => {
     setEditContent(message.content);
     setIsEditing(false);
   };
 
+  // Trigger delete confirmation flow
   const handleDeleteClick = () => {
     setShowDeleteModal(true);
   };
 
+  // Execute delete after confirmation
   const handleConfirmDelete = () => {
     if (onDelete) onDelete();
     setShowDeleteModal(false);
   };
 
+  // Show navigation controls if multiple versions exist at this thread level
   const showNavigation = siblings.length > 1;
 
-  // Render content based on deleted state
+  // Render content based on message state (deleted, editing, or normal)
   const renderContent = () => {
+    // Deleted message state - shows restoration option
     if (message.isDeleted) {
       return (
         <div className="flex items-center gap-2 text-gray-400 text-sm italic bg-gray-50 px-3 py-2 rounded-lg border border-gray-100">
@@ -101,6 +159,7 @@ export default function MessageBubble({
       );
     }
 
+    // Edit mode - shows textarea with save/cancel controls
     if (isEditing) {
       return (
         <div className="w-full bg-white border border-gray-300 rounded-lg p-3 shadow-sm">
@@ -127,8 +186,7 @@ export default function MessageBubble({
       );
     }
 
-    // User messages: plain text with styling
-    // Assistant messages: markdown with syntax highlighting
+    // User messages: plain text with sky blue background
     if (isUser) {
       return (
         <div className="rounded-lg whitespace-pre-wrap relative bg-sky-100 text-gray-900 p-3 text-left">
@@ -137,6 +195,7 @@ export default function MessageBubble({
       );
     }
 
+    // Assistant messages: markdown with syntax highlighting via StreamingMarkdown
     return (
       <div className="rounded-lg relative text-gray-900 px-1 py-1 text-left w-full overflow-hidden">
         <StreamingMarkdown content={message.content} isStreaming={isStreaming} />
@@ -149,11 +208,13 @@ export default function MessageBubble({
       <div className={`group flex my-3 ${isUser ? "justify-end" : "justify-start"}`}>
         <div className={`flex flex-col min-w-0 ${isUser ? "max-w-[90%] items-end" : "w-full items-start"}`}>
 
+          {/* Main content area */}
           {renderContent()}
 
+          {/* Controls footer (hidden during editing) */}
           {!isEditing && (
             <div className={`flex items-center gap-2 mt-1 ${isUser ? "self-end" : "self-start"}`}>
-              {/* Slide Navigation - Always visible if multiple siblings exist */}
+              {/* Version navigation - shown when multiple sibling messages exist */}
               {showNavigation && onSelectVersion && (
                 <div className="flex items-center gap-1 text-xs text-gray-500 font-medium select-none mr-2">
                   <button
@@ -174,14 +235,15 @@ export default function MessageBubble({
                 </div>
               )}
 
-              {/* Actions (Copy, Delete/Edit, Regenerate) - Visible on Hover, but hidden if deleted */}
+              {/* Action buttons - visible on hover, hidden for deleted messages */}
               {!message.isDeleted && (
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* Copy button with temporary success indicator */}
                   <button onClick={handleCopy} title="Copy" className="p-1 hover:bg-gray-200 rounded text-gray-500">
                     {copied ? <span className="text-xs font-bold text-green-600">✓</span> : <ClipboardDocumentIcon className="h-4 w-4" />}
                   </button>
 
-                  {/* Edit for User, Delete for AI */}
+                  {/* Edit for user messages, Delete for assistant messages */}
                   {isUser && onEdit ? (
                     <button onClick={() => setIsEditing(true)} title="Edit" className="p-1 hover:bg-gray-200 rounded text-gray-500">
                       <PencilSquareIcon className="h-4 w-4" />
@@ -194,6 +256,7 @@ export default function MessageBubble({
                     )
                   )}
 
+                  {/* Regenerate button for assistant messages */}
                   {onRegenerate && !isUser && (
                     <button onClick={onRegenerate} title="Regenerate" className="p-1 hover:bg-gray-200 rounded text-gray-500">
                       <ArrowPathIcon className="h-4 w-4" />
@@ -206,6 +269,7 @@ export default function MessageBubble({
         </div>
       </div>
 
+      {/* Delete confirmation modal (rendered conditionally) */}
       <DeleteConfirmationModal
         open={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}

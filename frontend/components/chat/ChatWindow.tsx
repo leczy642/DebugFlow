@@ -1,5 +1,44 @@
 // components/chat/ChatWindow.tsx
 //This holds an array of messages and renders MessageBubble.
+
+// components/chat/ChatWindow.tsx
+/**
+ * ChatWindow.tsx
+ * -----------------------------------------------------------------------------
+ * PURPOSE:
+ * Renders the main chat interface displaying message history and thread navigation.
+ * Manages complex thread structures with branching conversations where users
+ * can select between different response versions at each branching point.
+ *
+ * ROLE IN PROJECT:
+ * - Primary visualization component for chat history and message threads
+ * - Handles complex thread navigation and version selection
+ * - Manages auto-scrolling behavior during streaming responses
+ * - Coordinates with MessageBubble components for message interactions
+ *
+ * WHAT THIS FILE DOES:
+ * 1. Builds thread structure from flat message list using parent-child relationships
+ * 2. Manages state for active version selection at each branching point
+ * 3. Handles auto-scrolling logic during streaming and message updates
+ * 4. Provides scroll-to-bottom functionality for long conversations
+ * 5. Renders message bubbles with version selection controls
+ *
+ * INPUTS:
+ * - Messages from chatStore (including thread relationships)
+ * - User interactions (version selection, scrolling)
+ * - Streaming state to manage auto-scroll behavior
+ *
+ * OUTPUTS:
+ * - Visual representation of chat history with thread navigation
+ * - Scroll position management
+ * - User interactions forwarded to chatStore (regenerate, delete, edit, restore)
+ *
+ * IMPORTANT:
+ * This component handles complex thread reconstruction from flat message data.
+ * It maintains separate UI state for active version selection while delegating
+ * message operations to the chatStore.
+ * -----------------------------------------------------------------------------
+ */
 "use client";
 
 import MessageBubble from "./MessageBubble";

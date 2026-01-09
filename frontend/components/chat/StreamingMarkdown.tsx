@@ -1,4 +1,42 @@
 // components/chat/StreamingMarkdown.tsx
+/**
+ * StreamingMarkdown.tsx
+ * -----------------------------------------------------------------------------
+ * PURPOSE:
+ * Renders markdown content from AI responses with rich formatting and syntax highlighting.
+ * Special handling for streaming content ensures incomplete code blocks are displayed
+ * gracefully without breaking the markdown parser.
+ *
+ * ROLE IN PROJECT:
+ * - Primary markdown renderer for assistant messages in chat interface
+ * - Provides code syntax highlighting with copy functionality
+ * - Handles streaming edge cases (unclosed code fences, partial content)
+ * - Ensures consistent styling across all markdown elements
+ *
+ * WHAT THIS FILE DOES:
+ * 1. Processes streaming content to handle incomplete markdown structures
+ * 2. Renders markdown with GitHub Flavored Markdown (GFM) support
+ * 3. Provides syntax-highlighted code blocks with language detection
+ * 4. Implements copy-to-clipboard functionality for code snippets
+ * 5. Applies consistent styling to all markdown elements (headings, lists, tables, etc.)
+ * 6. Handles inline code, links, blockquotes, and tables appropriately
+ *
+ * INPUTS:
+ * - `content`: Markdown-formatted text to render
+ * - `isStreaming`: Boolean indicating if content is still streaming (affects code block handling)
+ *
+ * OUTPUTS:
+ * - Fully rendered markdown with appropriate HTML structure
+ * - Interactive code blocks with copy buttons
+ * - Accessible, styled markdown elements
+ *
+ * IMPORTANT:
+ * This component uses ReactMarkdown with custom components to override default styling.
+ * During streaming, it automatically closes incomplete code blocks to prevent parsing errors.
+ * The copy functionality is per-component instance (not per code block) due to state limitations.
+ * -----------------------------------------------------------------------------
+ */
+
 "use client";
 
 import { useMemo, useState } from "react";
@@ -12,22 +50,19 @@ type Props = {
     isStreaming?: boolean;
 };
 
-/**
- * StreamingMarkdown - Renders markdown content with syntax highlighting.
- * Handles incomplete code blocks gracefully during streaming.
- */
 export default function StreamingMarkdown({ content, isStreaming = false }: Props) {
-    // Memoize the processed content to avoid unnecessary re-renders
+    // Process content to handle streaming edge cases
     const processedContent = useMemo(() => {
         if (!isStreaming) return content;
 
-        // During streaming, check for incomplete code fences and close them temporarily
-        // to prevent markdown parsing errors.
+        // During streaming, check for incomplete code fences
+        // Unclosed code blocks can break markdown parsing, so we temporarily close them
         const codeBlockRegex = /```/g;
         const matches = content.match(codeBlockRegex);
         const count = matches ? matches.length : 0;
 
-        // If odd number of ```, the last code block is incomplete - add a closing fence
+        // If odd number of ```, the last code block is incomplete
+        // Add a closing fence to prevent parsing errors
         if (count % 2 !== 0) {
             return content + "\n```";
         }
@@ -35,27 +70,29 @@ export default function StreamingMarkdown({ content, isStreaming = false }: Prop
         return content;
     }, [content, isStreaming]);
 
-    // State for copy feedback - each code block has its own state
+    // State for copy feedback (currently shared across all code blocks in this component)
+    // Note: This creates shared state - all code blocks show "Copied" when any is copied
     const [copied, setCopied] = useState(false);
 
-    // Handle copy with proper parameter passing
+    // Handle copying code to clipboard
     const handleCopy = (codeSnippet: string) => {
         navigator.clipboard.writeText(codeSnippet);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
+
     return (
         <div className="streaming-markdown">
             <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
+                remarkPlugins={[remarkGfm]} // Enable GitHub Flavored Markdown
                 components={{
-                    // Custom renderer for code blocks
+                    // Custom renderer for code blocks (both inline and fenced)
                     code({ node, className, children, ...props }) {
                         const match = /language-(\w+)/.exec(className || "");
                         const isInline = !match && !className;
 
+                        // Inline code styling
                         if (isInline) {
-                            // Inline code styling
                             return (
                                 <code
                                     className="inline-code"
@@ -70,9 +107,9 @@ export default function StreamingMarkdown({ content, isStreaming = false }: Prop
                         const language = match ? match[1] : "text";
                         const codeString = String(children).replace(/\n$/, "");
 
-
                         return (
                             <div className="code-block-wrapper">
+                                {/* Code block header with language label and copy button */}
                                 <div className="code-block-header">
                                     <span className="code-block-language">{language}</span>
                                     <button
@@ -88,8 +125,9 @@ export default function StreamingMarkdown({ content, isStreaming = false }: Prop
                                         ) : 'Copy'}
                                     </button>
                                 </div>
+                                {/* Syntax-highlighted code content */}
                                 <SyntaxHighlighter
-                                    style={oneLight}
+                                    style={oneLight} // Light theme syntax highlighting
                                     language={language}
                                     PreTag="div"
                                     customStyle={{
@@ -108,14 +146,15 @@ export default function StreamingMarkdown({ content, isStreaming = false }: Prop
                     p({ children }) {
                         return <p className="mb-3 last:mb-0">{children}</p>;
                     },
-                    // List styling
+                    // Unordered list styling
                     ul({ children }) {
                         return <ul className="list-disc list-inside mb-3 space-y-1">{children}</ul>;
                     },
+                    // Ordered list styling
                     ol({ children }) {
                         return <ol className="list-decimal list-inside mb-3 space-y-1">{children}</ol>;
                     },
-                    // Heading styling
+                    // Heading styling with appropriate hierarchy
                     h1({ children }) {
                         return <h1 className="text-xl font-bold mb-3 mt-4">{children}</h1>;
                     },
@@ -133,7 +172,7 @@ export default function StreamingMarkdown({ content, isStreaming = false }: Prop
                             </blockquote>
                         );
                     },
-                    // Link styling
+                    // External link styling (opens in new tab)
                     a({ href, children }) {
                         return (
                             <a
@@ -146,7 +185,7 @@ export default function StreamingMarkdown({ content, isStreaming = false }: Prop
                             </a>
                         );
                     },
-                    // Table styling - streaming aware with horizontal scroll
+                    // Table container with horizontal scroll for responsiveness
                     table({ children }) {
                         return (
                             <div className="table-scroll-container">

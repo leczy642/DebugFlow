@@ -34,6 +34,7 @@ import dotenv from 'dotenv';
 import { logger } from './utils/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
+import authenticateToken from './middleware/auth.js';
 
 // setting up Routers
 import ingestRouter from './routes/ingest.js';
@@ -59,6 +60,13 @@ app.get('/health', (req, res) => {
     status: 'ok',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/protected', authenticateToken, (req, res) => {
+  res.json({
+    message: 'You are authenticated',
+    user: req.user
   });
 });
 

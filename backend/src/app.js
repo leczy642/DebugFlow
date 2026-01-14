@@ -43,6 +43,9 @@ import chatRouter from './routes/chat.js';
 import sessionsRouter from './routes/sessions.js';
 import messagesRouter from './routes/messages.js';
 
+// User queries
+import { getUserById, createUser, updateUserLogin } from './db/models/user_queries.js';
+
 // Load environment variables
 dotenv.config();
 
@@ -63,11 +66,38 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.get('/protected', authenticateToken, (req, res) => {
-  res.json({
-    message: 'You are authenticated',
-    user: req.user
-  });
+// using the API routes
+
+app.get('/protected', authenticateToken, async (req, res) => {
+  try {
+    const { uid, email, fullname, email_verified } = req.user;
+
+    // Check if user exists
+    let user = await getUserById(uid);
+
+    if (!user) {
+      console.log(`Creating new user: ${email}`);
+      // Create new user
+      user = await createUser({
+        id: uid,
+        email: email || "",
+        name: fullname || "User",
+        email_verified: email_verified || false
+      });
+    } else {
+      // Update last login
+      await updateUserLogin(uid);
+    }
+
+    res.json({
+      message: 'You are authenticated',
+      user: req.user,
+      dbUser: user
+    });
+  } catch (error) {
+    console.error("Error syncing user:", error);
+    res.status(500).json({ error: "Internal server error during user sync" });
+  }
 });
 
 // using the API routes

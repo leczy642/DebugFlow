@@ -1,11 +1,26 @@
-import { createServer } from "http";
-import { app } from "./app.js";
+import { app } from './app.js';
+import { pool } from './db/postgres_connect.js';
+import { ensureUsersTableExists } from './db/models/user_queries.js';
 
-const port = process.env.BACKEND_PORT || 4000;
-const host = process.env.BACKEND_HOST || "0.0.0.0";
+const PORT = process.env.PORT || 4000;
 
-const server = createServer(app);
+async function startServer() {
+  try {
+    // Ensure DB connection
+    const client = await pool.connect();
+    client.release();
+    console.log("✅ Database connection verified");
 
-server.listen(port, host, () => {
-  console.log(`✅ Backend listening on http://${host}:${port}`);
-});
+    // Ensure tables exist
+    await ensureUsersTableExists();
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error("❌ Failed to start server:", err);
+    process.exit(1);
+  }
+}
+
+startServer();

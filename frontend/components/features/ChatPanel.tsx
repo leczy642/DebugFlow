@@ -1,10 +1,8 @@
 'use client';
 import { useMutation } from '@tanstack/react-query';
-import axios from 'axios';
+import { api } from '@/lib/api';
 import { useState } from 'react';
 import { Button } from '../ui/Button';
-
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
 
 export function ChatPanel() {
   const [message, setMessage] = useState('');
@@ -12,8 +10,8 @@ export function ChatPanel() {
 
   const chat = useMutation({
     mutationFn: async (payload: { message: string }) => {
-      const res = await axios.post(`${BASE_URL}/api/chat`, payload);
-      return res.data;
+      const data = await api.post('/api/chat', payload);
+      return data;
     },
     onSuccess(data) {
       setReply(data.reply ?? '');

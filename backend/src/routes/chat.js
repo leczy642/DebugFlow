@@ -34,6 +34,16 @@ router.post("/", async (req, res) => {
   try {
     const { sessionId, message, parentId, skipUserMessage } = req.body;
 
+    // Defensive check: ensure user is authenticated
+    if (!req.user || !req.user.uid) {
+      return res.status(401).json({
+        success: false,
+        error: "Authentication required. Please log in.",
+      });
+    }
+
+    const { uid: firebaseUid } = req.user;
+
     /* -----------------------------
        VALIDATION
     ----------------------------- */

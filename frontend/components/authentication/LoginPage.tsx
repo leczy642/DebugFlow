@@ -1,14 +1,64 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { FaGoogle, FaGithub, FaEnvelope } from "react-icons/fa";
 import { Button } from "../ui/Button";
+import { signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
+import { auth, googleProvider, githubProvider } from '@/lib/firebase';
+import { api } from '@/lib/api';
 
 export default function LoginPage() {
+    const [token, setToken] = useState<string | null>(null);
     const [email, setEmail] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+
+    const handleGoogle = async () => {
+        try {
+            const result = await signInWithPopup(auth, googleProvider);
+            const user = result.user;
+            if (user) {
+                const idToken = await user.getIdToken();
+                console.log('Sending Google token to backend...');
+                await api.get('/protected');
+                console.log('Backend verified token.');
+            }
+        }
+        catch (error) {
+            console.error('Google sign-in failed:', error);
+            setError('Google sign-in failed. Please try again.');
+        }
+    };
+
+    const handleGithub = async () => {
+        try {
+            const result = await signInWithPopup(auth, githubProvider);
+            const user = result.user;
+            if (user) {
+                const idToken = await user.getIdToken();
+                console.log('Sending GitHub token to backend...');
+                await api.get('/protected');
+                console.log('Backend verified token.');
+            }
+        }
+        catch (error) {
+            console.error('Github sign-in failed:', error);
+            setError('Github sign-in failed. Please try again.');
+        }
+    };
+
+    const handleSignOut = async () => {
+        try {
+            localStorage.removeItem('debugflow_token');
+            await firebaseSignOut(auth);
+            setToken(null);
+            console.log("You have been successfully logged out")
+        }
+        catch (error) {
+            console.error('Sign-out failed:', error);
+        }
+    };
 
     const handleEmailSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -54,6 +104,7 @@ export default function LoginPage() {
                         {/* Social Sign-in Buttons */}
                         <div className="flex flex-col gap-3">
                             <button
+                                onClick={handleGoogle}
                                 type="button"
                                 className="w-full inline-flex items-center justify-center py-3 px-4 border border-gray-200 rounded-2xl shadow-sm bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all duration-200 group"
                             >
@@ -62,6 +113,7 @@ export default function LoginPage() {
                             </button>
 
                             <button
+                                onClick={handleGithub}
                                 type="button"
                                 className="w-full inline-flex items-center justify-center py-3 px-4 rounded-2xl shadow-md bg-gray-900 text-sm font-semibold text-white hover:bg-black transition-all duration-200 group"
                             >

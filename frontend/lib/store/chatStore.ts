@@ -33,6 +33,7 @@
  */
 import { create } from "zustand";
 import { useUIStore } from "./uiStore";
+import { api, getAuthHeaders } from '@/lib/api';
 
 type Message = {
   id?: string;
@@ -100,8 +101,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
      LOAD EXISTING SESSIONS FROM SERVER
   ---------------------------------------------------------------- */
   loadSessions: async () => {
-    const res = await fetch("http://localhost:4000/api/sessions");
-    const sessions = await res.json();
+    const sessions = await api.get("/api/sessions");
 
     set({
       sessions: sessions.map((s: any) => ({
@@ -118,11 +118,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   startNewSession: async () => {
     set({ pendingSession: true });
 
-    const res = await fetch("http://localhost:4000/api/sessions", {
-      method: "POST",
-    });
-
-    const session = await res.json();
+    const session = await api.post("/api/sessions", {});
 
     set((state) => ({
       sessions: [
@@ -139,10 +135,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     SELECT SESSION & LOAD ITS MESSAGES
  ---------------------------------------------------------------- */
   selectSession: async (id: string) => {
-    const res = await fetch(
-      `http://localhost:4000/api/sessions/${id}/messages`
-    );
-    const messages = await res.json();
+    const messages = await api.get(`/api/sessions/${id}/messages`);
 
     set({
       currentSessionId: id,
@@ -208,9 +201,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     });
 
     try {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch("http://localhost:4000/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders,
         body: JSON.stringify({
           sessionId: currentSessionId,
           message: content,
@@ -379,12 +373,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }));
 
     try {
-      const res = await fetch(`http://localhost:4000/api/messages/${id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        set({ messages: prevMessages });
-      }
+      await api.delete(`/api/messages/${id}`);
     } catch (err) {
       set({ messages: prevMessages });
     }
@@ -399,12 +388,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }));
 
     try {
-      const res = await fetch(`http://localhost:4000/api/messages/${id}/restore`, {
-        method: "POST",
-      });
-      if (!res.ok) {
-        set({ messages: prevMessages });
-      }
+      await api.post(`/api/messages/${id}/restore`, {});
     } catch (err) {
       set({ messages: prevMessages });
     }
@@ -449,14 +433,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }));
 
       try {
-        const res = await fetch(`http://localhost:4000/api/sessions/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: trimmed }),
-        });
-        if (!res.ok) {
-          set({ sessions: prev });
-        }
+        await api.put(`/api/sessions/${id}`, { title: trimmed });
       } catch (err) {
         set({ sessions: prev });
       }
@@ -471,12 +448,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({ sessions: reordered });
 
       try {
-        const res = await fetch(`http://localhost:4000/api/sessions/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pinned: true }),
-        });
-        if (!res.ok) set({ sessions: prev });
+        await api.put(`/api/sessions/${id}`, { pinned: true });
       } catch (err) {
         set({ sessions: prev });
       }
@@ -491,12 +463,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set({ sessions: reordered });
 
       try {
-        const res = await fetch(`http://localhost:4000/api/sessions/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pinned: false }),
-        });
-        if (!res.ok) set({ sessions: prev });
+        await api.put(`/api/sessions/${id}`, { pinned: false });
       } catch (err) {
         set({ sessions: prev });
       }
@@ -522,17 +489,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
 
     try {
-      const res = await fetch(`http://localhost:4000/api/sessions/${id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        // rollback
-        set({ sessions: prev, currentSessionId: prevCurrent, messages: prevMessages });
-        // restore previous input bar state if we changed it
-        if (prevCurrent === id && !prevInputCentered) {
-          useUIStore.getState().dockInput();
-        }
-      }
+      await api.delete(`/api/sessions/${id}`);
     } catch (err) {
       set({ sessions: prev, currentSessionId: prevCurrent, messages: prevMessages });
       if (prevCurrent === id && !prevInputCentered) {

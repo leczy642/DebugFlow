@@ -54,6 +54,7 @@ async function authenticateToken(req, res, next) {
     req.user = {
       // User identity
       uid: decodedToken.uid,
+      fullname: decodedToken.name,
       email: decodedToken.email,
       email_verified: decodedToken.email_verified,
       profile_picture: decodedToken.picture,

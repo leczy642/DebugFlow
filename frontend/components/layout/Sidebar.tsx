@@ -17,9 +17,15 @@ import SessionActionsDropdown from "../chat/SessionActionsDropdown";
 import RenameSessionModal from "../chat/RenameSessionModal";
 import DeleteSessionModal from "../chat/DeleteSessionModal";
 import SettingsPopup from "./SettingsPopup";
+import { useAuth } from "@/lib/hooks/useAuth";
 
 export default function Sidebar() {
   const { sidebarOpen, toggleSidebar, centerInput, dockInput, inputBarCentered } = useUIStore();
+  const { user } = useAuth();
+
+  // Extract first name or fallback to "User"
+  const firstName = user?.displayName ? user.displayName.split(' ')[0] : 'User';
+
   const {
     sessions,
     loadSessions,
@@ -319,7 +325,7 @@ export default function Sidebar() {
         {/* FOOTER */}
         <div className="mt-auto px-3 h-[83px]">
           <div className="h-full flex items-center justify-between">
-            {sidebarOpen && <div className="text-sm text-[#1A1A1A]">Alex</div>}
+            {sidebarOpen && <div className="text-sm text-[#1A1A1A] font-medium">{firstName}</div>}
             <button
               onClick={handleSettingsClick}
               className="p-2 rounded-lg hover:bg-[#EAEAEA] transition"

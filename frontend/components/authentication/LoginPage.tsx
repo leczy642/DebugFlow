@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { FaGoogle, FaGithub, FaEnvelope } from "react-icons/fa";
 import { Button } from "../ui/Button";
 import { signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
@@ -8,6 +9,7 @@ import { auth, googleProvider, githubProvider } from '@/lib/firebase';
 import { api } from '@/lib/api';
 
 export default function LoginPage() {
+    const router = useRouter();
     const [token, setToken] = useState<string | null>(null);
     const [email, setEmail] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -23,6 +25,8 @@ export default function LoginPage() {
                 console.log('Sending Google token to backend...');
                 await api.get('/protected');
                 console.log('Backend verified token.');
+                // Redirect to home page after successful authentication
+                router.push('/');
             }
         }
         catch (error) {
@@ -40,6 +44,8 @@ export default function LoginPage() {
                 console.log('Sending GitHub token to backend...');
                 await api.get('/protected');
                 console.log('Backend verified token.');
+                // Redirect to home page after successful authentication
+                router.push('/');
             }
         }
         catch (error) {

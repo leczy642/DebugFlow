@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import SessionActionsDropdown from "../chat/SessionActionsDropdown";
 import RenameSessionModal from "../chat/RenameSessionModal";
 import DeleteSessionModal from "../chat/DeleteSessionModal";
+import SettingsPopup from "./SettingsPopup";
 
 export default function Sidebar() {
   const { sidebarOpen, toggleSidebar, centerInput, dockInput, inputBarCentered } = useUIStore();
@@ -70,6 +71,8 @@ export default function Sidebar() {
     id: string;
     title: string;
   } | null>(null);
+  const [settingsPopupOpen, setSettingsPopupOpen] = useState(false);
+  const [settingsPopupPosition, setSettingsPopupPosition] = useState({ bottom: 0, left: 0 });
 
   const handleMoreOptions = (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
@@ -123,6 +126,21 @@ export default function Sidebar() {
       deleteSession(deleteModal.id);
     }
     setDeleteModal(null);
+  };
+
+  const handleSettingsClick = (e: React.MouseEvent) => {
+    const button = e.currentTarget;
+    const rect = button.getBoundingClientRect();
+
+    // Get the sidebar element to align popup with "Alex" text
+    const sidebar = button.closest('aside');
+    const sidebarRect = sidebar?.getBoundingClientRect();
+
+    setSettingsPopupPosition({
+      bottom: window.innerHeight - rect.top + 8,
+      left: sidebarRect ? sidebarRect.left + 12 : rect.left, // 12px matches px-3 padding
+    });
+    setSettingsPopupOpen(!settingsPopupOpen);
   };
 
   useEffect(() => {
@@ -302,7 +320,10 @@ export default function Sidebar() {
         <div className="mt-auto px-3 h-[83px]">
           <div className="h-full flex items-center justify-between">
             {sidebarOpen && <div className="text-sm text-[#1A1A1A]">Alex</div>}
-            <button className="p-2 rounded-lg hover:bg-[#EAEAEA] transition">
+            <button
+              onClick={handleSettingsClick}
+              className="p-2 rounded-lg hover:bg-[#EAEAEA] transition"
+            >
               <Cog6ToothIcon className="w-5 h-5 text-[#606060]" />
             </button>
           </div>
@@ -356,6 +377,14 @@ export default function Sidebar() {
           sessionTitle={deleteModal.title}
           onClose={() => setDeleteModal(null)}
           onConfirm={handleDeleteConfirm}
+        />
+      )}
+
+      {/* SETTINGS POPUP */}
+      {settingsPopupOpen && (
+        <SettingsPopup
+          position={settingsPopupPosition}
+          onClose={() => setSettingsPopupOpen(false)}
         />
       )}
     </div>

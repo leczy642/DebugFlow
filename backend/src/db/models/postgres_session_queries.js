@@ -5,22 +5,28 @@ import { v4 as uuid } from "uuid";
    SESSIONS
 ----------------------------- */
 
-export async function getAllSessions() {
+export async function getAllSessions(userId) {
   try {
     const { rows } = await pool.query(
       `SELECT id, title, pinned, created_at, updated_at
        FROM sessions
-       ORDER BY updated_at DESC`
+       WHERE user_id = $1
+       ORDER BY updated_at DESC`,
+      [userId]
     );
     return rows;
   } catch (err) {
-    // If the pinned column doesn't exist, add it and retry
+    // If columns missing (pinned or user_id), add them and retry
     if (err && err.code === "42703") {
       await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS pinned boolean DEFAULT false`);
+      await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)`);
+
       const { rows } = await pool.query(
         `SELECT id, title, pinned, created_at, updated_at
          FROM sessions
-         ORDER BY updated_at DESC`
+         WHERE user_id = $1
+         ORDER BY updated_at DESC`,
+        [userId]
       );
       return rows;
     }
@@ -28,26 +34,28 @@ export async function getAllSessions() {
   }
 }
 
-export async function createSession() {
+export async function createSession(userId) {
   const id = uuid();
   const title = "New Debug Session";
 
   try {
     const { rows } = await pool.query(
-      `INSERT INTO sessions (id, title)
-       VALUES ($1, $2)
+      `INSERT INTO sessions (id, title, user_id)
+       VALUES ($1, $2, $3)
        RETURNING id, title, pinned, created_at, updated_at`,
-      [id, title]
+      [id, title, userId]
     );
     return rows[0];
   } catch (err) {
     if (err && err.code === "42703") {
       await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS pinned boolean DEFAULT false`);
+      await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)`);
+
       const { rows } = await pool.query(
-        `INSERT INTO sessions (id, title)
-         VALUES ($1, $2)
+        `INSERT INTO sessions (id, title, user_id)
+         VALUES ($1, $2, $3)
          RETURNING id, title, pinned, created_at, updated_at`,
-        [id, title]
+        [id, title, userId]
       );
       return rows[0];
     }

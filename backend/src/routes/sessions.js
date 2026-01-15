@@ -35,8 +35,9 @@ const router = express.Router();
  *   Success (200): Array<Session>
  *   Error (500): { error: string } - Database failure
  */
-router.get("/", async (_, res) => {
-  const sessions = await getAllSessions();
+router.get("/", async (req, res) => {
+  const { uid } = req.user;
+  const sessions = await getAllSessions(uid);
   res.json(sessions);
 });
 
@@ -51,8 +52,9 @@ router.get("/", async (_, res) => {
  *   Success (200): Session
  *   Error (500): { error: string } - Failed to create session
  */
-router.post("/", async (_, res) => {
-  const session = await createSession();
+router.post("/", async (req, res) => {
+  const { uid } = req.user;
+  const session = await createSession(uid);
   res.json(session);
 });
 

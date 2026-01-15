@@ -105,7 +105,7 @@ app.use('/api/ingest', ingestRouter);
 app.use('/api/analyze', analyzeRouter);
 app.use('/api/chat', authenticateToken, chatRouter);
 // Mount sessions under /api to match frontend expectations
-app.use("/api/sessions", sessionsRouter);
+app.use("/api/sessions", authenticateToken, sessionsRouter);
 app.use("/api/messages", messagesRouter);
 
 // Global error handler (must be last)

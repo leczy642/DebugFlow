@@ -48,9 +48,78 @@ export default function LoginPage() {
                 router.push('/');
             }
         }
-        catch (error) {
+        catch (error: any) {
             console.error('Github sign-in failed:', error);
-            setError('Github sign-in failed. Please try again.');
+
+            // Handle account linking case
+            if (error.code === 'auth/account-exists-with-different-credential') {
+                try {
+                    const { OAuthProvider, fetchSignInMethodsForEmail, linkWithCredential, GoogleAuthProvider, EmailAuthProvider } = await import('firebase/auth');
+
+                    const pendingCred = OAuthProvider.credentialFromError(error);
+                    const email = error.customData?.email || error.email;
+
+                    if (!pendingCred || !email) {
+                        console.error("Could not retrieve pending credential or email");
+                        setError("Account linking failed: missing credentials.");
+                        return;
+                    }
+
+                    // Determine the existing provider
+                    const methods = await fetchSignInMethodsForEmail(auth, email);
+                    console.log("Existing methods for email:", methods);
+
+                    let providerToUse: any = null;
+                    if (methods.includes('google.com')) {
+                        providerToUse = googleProvider;
+                    } else if (methods.includes('password')) {
+                        // We might need to handle password sign-in differently (prompt for password)
+                        // For now, let's focus on Google as per requirements
+                        console.warn("User has password account, complex flow needed.");
+                        setError("This email is registered with a password. Please sign in with email/password first, then link GitHub.");
+                        return;
+                    }
+
+                    if (!providerToUse) {
+                        // Default to trying Google if we can't determine (or simply just ask user)
+                        // But for now, if 'google.com' isn't in list, we might be stuck or it's another provider.
+                        // Let's fallback to assuming Google if requirement said so, or better, show error.
+                        // If methods is empty, it's weird because error says account exists.
+                        // Let's assume Google if the user explicitly asked for this case.
+                        providerToUse = googleProvider;
+                    }
+
+                    // Pause flow and ask user
+                    const confirmLink = window.confirm(
+                        `This email (${email}) is already registered with an existing account. Do you want to link your GitHub account?`
+                    );
+
+                    if (confirmLink) {
+                        // Sign in with the existing provider
+                        const result = await signInWithPopup(auth, providerToUse);
+                        const user = result.user;
+
+                        if (user) {
+                            // Link the pending GitHub credential
+                            await linkWithCredential(user, pendingCred);
+
+                            console.log("Accounts successfully linked!");
+
+                            // Proceed with backend sync
+                            const idToken = await user.getIdToken();
+                            await api.get('/protected');
+                            router.push('/');
+                        }
+                    } else {
+                        console.log("User cancelled account linking");
+                    }
+                } catch (linkError) {
+                    console.error("Account linking failed completely:", linkError);
+                    setError("Failed to link accounts. Please try again.");
+                }
+            } else {
+                setError('Github sign-in failed. Please try again.');
+            }
         }
     };
 

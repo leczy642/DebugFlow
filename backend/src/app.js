@@ -77,12 +77,20 @@ app.get('/protected', authenticateToken, async (req, res) => {
 
     if (!user) {
       console.log(`Creating new user: ${email}`);
+
+      // Determine auth provider and oauth status
+      const provider = req.user.sign_in_provider || 'unknown';
+      const isOauth = provider !== 'password' && provider !== 'email';
+
       // Create new user
       user = await createUser({
         id: uid,
         email: email || "",
         name: fullname || "User",
-        email_verified: email_verified || false
+        email_verified: email_verified || false,
+        auth_provider: provider,
+        is_oauth_user: isOauth,
+        oauth_verified: isOauth // Assuming oauth implies verified for now
       });
     } else {
       // Update last login

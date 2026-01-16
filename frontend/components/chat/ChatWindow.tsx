@@ -52,6 +52,7 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   parentId?: string | null;
+  isDeleted?: boolean;
 };
 
 export default function ChatWindow() {
@@ -64,6 +65,15 @@ export default function ChatWindow() {
   // State to track which version is selected for each parent node
   // Key: parentId (or 'root'), Value: selected messageId
   const [activeVersions, setActiveVersions] = useState<Record<string, string>>({});
+  const [activeLinkId, setActiveLinkId] = useState<string | null>(null);
+
+  const handleLinkClick = (id: string) => {
+    const el = document.getElementById(`msg-${id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setActiveLinkId(id);
+    }
+  };
 
   // Build the thread to display based on active versions
   const thread = useMemo(() => {
@@ -187,6 +197,7 @@ export default function ChatWindow() {
           {thread.map((item, index) => (
             <MessageBubble
               key={item.message.id || index}
+              id={item.message.id ? `msg-${item.message.id}` : undefined}
               message={item.message}
               siblings={item.siblings}
               currentVersionIndex={item.index}
@@ -209,6 +220,26 @@ export default function ChatWindow() {
           {/* sentinel element to scroll to */}
           <div ref={bottomRef} />
         </div>
+      </div>
+
+      {/* Conversation Navigation Links */}
+      <div className="fixed right-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-40">
+        {thread.filter(t => t.message.role === 'user' && !t.message.isDeleted).map(t => (
+          <div
+            key={t.message.id}
+            onClick={() => t.message.id && handleLinkClick(t.message.id)}
+            className={`
+              h-[3px] rounded-full cursor-pointer transition-all duration-200 relative group/link
+              ${t.message.id === activeLinkId ? 'bg-blue-600' : 'bg-[#d0d3d9] hover:bg-[#1A1A1A]'}
+              w-[10px] hover:w-[15px]
+            `}
+          >
+            {/* Tooltip */}
+            <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover/link:opacity-100 transition-opacity whitespace-pre shadow-sm pointer-events-none">
+              {t.message.content.slice(0, 26)}...
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* floating scroll-to-bottom button; positioned above the InputBar */}

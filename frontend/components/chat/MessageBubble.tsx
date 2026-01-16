@@ -68,6 +68,7 @@ type Props = {
   onDelete?: () => void;
   onEdit?: (newContent: string) => void;
   onRestore?: () => void;
+  id?: string;
   isStreaming?: boolean;
 };
 
@@ -80,6 +81,7 @@ export default function MessageBubble({
   onDelete,
   onEdit,
   onRestore,
+  id,
   isStreaming = false
 }: Props) {
   // Component state
@@ -205,7 +207,7 @@ export default function MessageBubble({
 
   return (
     <>
-      <div className={`group flex my-3 ${isUser ? "justify-end" : "justify-start"}`}>
+      <div id={id} className={`group flex my-3 ${isUser ? "justify-end" : "justify-start"}`}>
         <div className={`flex flex-col min-w-0 ${isUser ? "max-w-[90%] items-end" : "w-full items-start"}`}>
 
           {/* Main content area */}

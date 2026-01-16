@@ -80,6 +80,8 @@ type ChatStore = {
   loadProjects: () => Promise<void>;
   createProject: (name: string) => Promise<void>;
   assignSessionToProject: (sessionId: string, projectId: string | null) => Promise<void>;
+  renameProject: (id: string, newName: string) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
 
   startNewSession: () => Promise<void>;
   selectSession: (id: string) => Promise<void>;
@@ -116,6 +118,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const sessions = await api.get("/api/sessions");
 
     set({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       sessions: sessions.map((s: any) => ({
         ...s,
         messages: [],
@@ -136,6 +139,37 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }));
   },
 
+  renameProject: async (id: string, newName: string) => {
+    const prev = get().projects;
+    const trimmed = newName.trim();
+    set((state) => ({
+      projects: state.projects.map((p) => p.id === id ? { ...p, name: trimmed } : p)
+    }));
+
+    try {
+      await api.patch(`/api/projects/${id}`, { name: trimmed });
+    } catch {
+      set({ projects: prev });
+    }
+  },
+
+  deleteProject: async (id: string) => {
+    const prevProjects = get().projects;
+    const prevSessions = get().sessions;
+
+    // Optimistic delete: remove project, move its sessions to root (project_id = null)
+    set((state) => ({
+      projects: state.projects.filter(p => p.id !== id),
+      sessions: state.sessions.map(s => s.project_id === id ? { ...s, project_id: null } : s)
+    }));
+
+    try {
+      await api.delete(`/api/projects/${id}`);
+    } catch {
+      set({ projects: prevProjects, sessions: prevSessions });
+    }
+  },
+
   assignSessionToProject: async (sessionId: string, projectId: string | null) => {
     const prev = get().sessions;
     set((state) => ({
@@ -144,7 +178,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     try {
       await api.patch(`/api/sessions/${sessionId}`, { project_id: projectId });
-    } catch (err) {
+    } catch {
       set({ sessions: prev });
     }
   },
@@ -355,7 +389,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       set({ activeRequestId: null, abortController: null, isStreaming: false });
 
-    } catch (err: any) {
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (err.name === 'AbortError') {
         return;
       }
@@ -416,7 +450,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     try {
       await api.delete(`/api/messages/${id}`);
-    } catch (err) {
+    } catch {
       set({ messages: prevMessages });
     }
   },
@@ -431,7 +465,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     try {
       await api.post(`/api/messages/${id}/restore`, {});
-    } catch (err) {
+    } catch {
       set({ messages: prevMessages });
     }
   },
@@ -476,7 +510,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       try {
         await api.patch(`/api/sessions/${id}`, { title: trimmed });
-      } catch (err) {
+      } catch {
         set({ sessions: prev });
       }
     })(id, newTitle),
@@ -500,7 +534,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       try {
         await api.patch(`/api/sessions/${id}`, { pinned: true });
-      } catch (err) {
+      } catch {
         set({ sessions: prev });
       }
     })(id),
@@ -522,7 +556,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       try {
         await api.patch(`/api/sessions/${id}`, { pinned: false });
-      } catch (err) {
+      } catch {
         set({ sessions: prev });
       }
     })(id),
@@ -548,7 +582,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     try {
       await api.delete(`/api/sessions/${id}`);
-    } catch (err) {
+    } catch {
       set({ sessions: prev, currentSessionId: prevCurrent, messages: prevMessages });
       if (prevCurrent === id && !prevInputCentered) {
         useUIStore.getState().dockInput();

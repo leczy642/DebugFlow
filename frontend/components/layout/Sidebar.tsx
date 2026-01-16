@@ -20,6 +20,9 @@ import RenameSessionModal from "../chat/RenameSessionModal";
 import DeleteSessionModal from "../chat/DeleteSessionModal";
 import NewProjectModal from "../chat/NewProjectModal";
 import AddToProjectModal from "../chat/AddToProjectModal";
+import ProjectActionsDropdown from "../chat/ProjectActionsDropdown";
+import RenameProjectModal from "../chat/RenameProjectModal";
+import DeleteProjectModal from "../chat/DeleteProjectModal";
 import SettingsPopup from "./SettingsPopup";
 import { useAuth } from "@/lib/hooks/useAuth";
 
@@ -37,6 +40,8 @@ export default function Sidebar() {
     loadProjects,
     createProject,
     assignSessionToProject,
+    renameProject,
+    deleteProject,
     // startNewSession, // Unused
     selectSession,
     currentSessionId,
@@ -66,12 +71,13 @@ export default function Sidebar() {
     resetToDefault();
   };
 
-  // const handleSelectSession = (id: string) => { // Unused
-  //   selectSession(id);
-  // };
-
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
   const [dropdownSessionId, setDropdownSessionId] = useState<string | null>(null);
+
+  // Project Dropdown State
+  const [hoveredProjectId, setHoveredProjectId] = useState<string | null>(null);
+  const [dropdownProjectId, setDropdownProjectId] = useState<string | null>(null);
+
   const [dropdownPosition, setDropdownPosition] = useState({
     top: 0,
     right: 0,
@@ -89,6 +95,16 @@ export default function Sidebar() {
   const [addToProjectModal, setAddToProjectModal] = useState<{
     sessionId: string;
     currentProjectId?: string | null;
+  } | null>(null);
+
+  // Project Modals State
+  const [renameProjectModal, setRenameProjectModal] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [deleteProjectModal, setDeleteProjectModal] = useState<{
+    id: string;
+    name: string;
   } | null>(null);
 
   // Track expanded state of project folders
@@ -112,13 +128,12 @@ export default function Sidebar() {
     const button = e.currentTarget;
     const rect = button.getBoundingClientRect();
 
-    // Estimate dropdown height (5 items + padding + borders ≈ 170px)
+    // Estimate dropdown height
     const estimatedDropdownHeight = 170;
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
-    const gap = 4; // Gap between button and dropdown
+    const gap = 4;
 
-    // Position above if there's not enough space below AND there's more space above
     const shouldPositionAbove = spaceBelow < estimatedDropdownHeight + gap && spaceAbove >= estimatedDropdownHeight + gap;
 
     setDropdownPosition({
@@ -129,6 +144,31 @@ export default function Sidebar() {
       above: shouldPositionAbove,
     });
     setDropdownSessionId(sessionId);
+    setDropdownProjectId(null); // Ensure only one dropdown is open
+  };
+
+  const handleProjectMoreOptions = (e: React.MouseEvent, projectId: string) => {
+    e.stopPropagation();
+    const button = e.currentTarget;
+    const rect = button.getBoundingClientRect();
+
+    // Estimate dropdown height
+    const estimatedDropdownHeight = 90; // Rename + Delete
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const gap = 4;
+
+    const shouldPositionAbove = spaceBelow < estimatedDropdownHeight + gap && spaceAbove >= estimatedDropdownHeight + gap;
+
+    setDropdownPosition({
+      top: shouldPositionAbove
+        ? rect.top + window.scrollY - estimatedDropdownHeight - gap
+        : rect.bottom + window.scrollY + gap,
+      right: window.innerWidth - rect.right - window.scrollX + gap - 25,
+      above: shouldPositionAbove,
+    });
+    setDropdownProjectId(projectId);
+    setDropdownSessionId(null); // Ensure only one dropdown is open
   };
 
   const handleRenameFromDropdown = (sessionId: string) => {
@@ -169,23 +209,53 @@ export default function Sidebar() {
     setDeleteModal(null);
   };
 
+  const handleRenameProjectTrigger = (projectId: string) => {
+    const project = projects.find(p => p.id === projectId);
+    if (project) {
+      setRenameProjectModal({ id: projectId, name: project.name });
+    }
+    setDropdownProjectId(null);
+  };
+
+  const handleRenameProjectConfirm = (newName: string) => {
+    if (renameProjectModal) {
+      renameProject(renameProjectModal.id, newName);
+    }
+    setRenameProjectModal(null);
+  };
+
+  const handleDeleteProjectTrigger = (projectId: string) => {
+    const project = projects.find(p => p.id === projectId);
+    if (project) {
+      setDeleteProjectModal({ id: projectId, name: project.name });
+    }
+    setDropdownProjectId(null);
+  };
+
+  const handleDeleteProjectConfirm = () => {
+    if (deleteProjectModal) {
+      deleteProject(deleteProjectModal.id);
+    }
+    setDeleteProjectModal(null);
+  };
+
   const handleSettingsClick = (e: React.MouseEvent) => {
     const button = e.currentTarget;
     const rect = button.getBoundingClientRect();
 
-    // Get the sidebar element to align popup with "Alex" text
     const sidebar = button.closest('aside');
     const sidebarRect = sidebar?.getBoundingClientRect();
 
     setSettingsPopupPosition({
       bottom: window.innerHeight - rect.top + 8,
-      left: sidebarRect ? sidebarRect.left + 12 : rect.left, // 12px matches px-3 padding
+      left: sidebarRect ? sidebarRect.left + 12 : rect.left,
     });
     setSettingsPopupOpen(!settingsPopupOpen);
   };
 
   useEffect(() => {
     setDropdownSessionId(null);
+    setDropdownProjectId(null);
   }, [sidebarOpen, currentSessionId]);
 
   // Dock the input bar when an existing session is selected
@@ -198,7 +268,6 @@ export default function Sidebar() {
   // Load sessions and projects from the server when the component mounts
   useEffect(() => {
     loadSessions().catch((err) => {
-      // swallow - store will handle errors if necessary
       console.error("Failed to load sessions:", err);
     });
     loadProjects().catch((err) => {
@@ -389,14 +458,20 @@ export default function Sidebar() {
             {projects.map(project => {
               const projectSessions = sessionsInProjects.get(project.id) || [];
               const isExpanded = expandedProjects.has(project.id);
+              const isHovered = hoveredProjectId === project.id;
 
               return (
-                <div key={project.id} className="mb-2">
+                <div
+                  key={project.id}
+                  className="mb-2"
+                  onMouseEnter={() => setHoveredProjectId(project.id)}
+                  onMouseLeave={() => setHoveredProjectId(null)}
+                >
                   <button
                     onClick={() => toggleProject(project.id)}
-                    className="w-full flex items-center justify-between p-2 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors group"
+                    className="w-full flex items-center justify-between p-2 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors group relative"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       {isExpanded ? (
                         <ChevronDownIcon className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
                       ) : (
@@ -406,6 +481,15 @@ export default function Sidebar() {
                       <span className="truncate">{project.name}</span>
                       <span className="text-xs text-gray-400 ml-1">({projectSessions.length})</span>
                     </div>
+
+                    {isHovered && (
+                      <div
+                        onClick={(e) => handleProjectMoreOptions(e, project.id)}
+                        className="p-0.5 rounded-md hover:bg-gray-300 text-gray-500 transition-colors"
+                      >
+                        <EllipsisVerticalIcon className="w-4 h-4" />
+                      </div>
+                    )}
                   </button>
 
                   {isExpanded && (
@@ -477,6 +561,17 @@ export default function Sidebar() {
         );
       })()}
 
+      {/* PROJECT ACTIONS DROPDOWN */}
+      {dropdownProjectId && (
+        <ProjectActionsDropdown
+          projectId={dropdownProjectId}
+          position={dropdownPosition}
+          onClose={() => setDropdownProjectId(null)}
+          onRename={handleRenameProjectTrigger}
+          onDelete={handleDeleteProjectTrigger}
+        />
+      )}
+
       {/* RENAME MODAL */}
       {renameModal && (
         <RenameSessionModal
@@ -503,6 +598,24 @@ export default function Sidebar() {
             createProject(name);
             setNewProjectModalOpen(false);
           }}
+        />
+      )}
+
+      {/* RENAME PROJECT MODAL */}
+      {renameProjectModal && (
+        <RenameProjectModal
+          currentName={renameProjectModal.name}
+          onClose={() => setRenameProjectModal(null)}
+          onConfirm={handleRenameProjectConfirm}
+        />
+      )}
+
+      {/* DELETE PROJECT MODAL */}
+      {deleteProjectModal && (
+        <DeleteProjectModal
+          projectName={deleteProjectModal.name}
+          onClose={() => setDeleteProjectModal(null)}
+          onConfirm={handleDeleteProjectConfirm}
         />
       )}
 

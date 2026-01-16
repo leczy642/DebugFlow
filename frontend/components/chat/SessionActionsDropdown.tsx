@@ -88,16 +88,28 @@ export default function SessionActionsDropdown({
         Share
       </button>
       {isInProject && onRemoveFromProject ? (
-        <button
-          onClick={() => {
-            onRemoveFromProject(sessionId);
-            onClose();
-          }}
-          className="w-full text-left px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-        >
-          <FolderMinusIcon className="h-4 w-4" />
-          Remove from project
-        </button>
+        <>
+          <button
+            onClick={() => {
+              onAddToProject(sessionId);
+              onClose();
+            }}
+            className="w-full text-left px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+          >
+            <FolderIcon className="h-4 w-4" />
+            Move to project
+          </button>
+          <button
+            onClick={() => {
+              onRemoveFromProject(sessionId);
+              onClose();
+            }}
+            className="w-full text-left px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+          >
+            <FolderMinusIcon className="h-4 w-4" />
+            Remove from project
+          </button>
+        </>
       ) : (
         <button
           onClick={() => {

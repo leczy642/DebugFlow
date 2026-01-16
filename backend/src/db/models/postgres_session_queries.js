@@ -8,7 +8,7 @@ import { v4 as uuid } from "uuid";
 export async function getAllSessions(userId) {
   try {
     const { rows } = await pool.query(
-      `SELECT id, title, pinned, created_at, updated_at
+      `SELECT id, title, pinned, project_id, created_at, updated_at
        FROM sessions
        WHERE user_id = $1
        ORDER BY pinned DESC, updated_at DESC`,
@@ -125,7 +125,7 @@ export async function setSessionPinned(sessionId, pinned) {
       `UPDATE sessions
        SET pinned = $2, updated_at = NOW()
        WHERE id = $1
-       RETURNING id, title, created_at, updated_at, pinned`,
+       RETURNING id, title, created_at, updated_at, pinned, project_id`,
       [sessionId, pinned]
     );
 
@@ -139,13 +139,24 @@ export async function setSessionPinned(sessionId, pinned) {
         `UPDATE sessions
          SET pinned = $2, updated_at = NOW()
          WHERE id = $1
-         RETURNING id, title, created_at, updated_at, pinned`,
+         RETURNING id, title, created_at, updated_at, pinned, project_id`,
         [sessionId, pinned]
       );
       return rows[0];
     }
     throw err;
   }
+}
+
+export async function assignSessionToProject(sessionId, projectId) {
+  const { rows } = await pool.query(
+    `UPDATE sessions
+     SET project_id = $2, updated_at = NOW()
+     WHERE id = $1
+     RETURNING id, title, pinned, project_id, updated_at`,
+    [sessionId, projectId]
+  );
+  return rows[0];
 }
 
 export async function deleteSessionById(sessionId) {

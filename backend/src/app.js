@@ -42,6 +42,7 @@ import analyzeRouter from './routes/analyze.js';
 import chatRouter from './routes/chat.js';
 import sessionsRouter from './routes/sessions.js';
 import messagesRouter from './routes/messages.js';
+import projectsRouter from './routes/projects.js';
 
 // User queries
 import { getUserById, createUser, updateUserLogin } from './db/models/user_queries.js';
@@ -115,6 +116,7 @@ app.use('/api/chat', authenticateToken, chatRouter);
 // Mount sessions under /api to match frontend expectations
 app.use("/api/sessions", authenticateToken, sessionsRouter);
 app.use("/api/messages", messagesRouter);
+app.use("/api/projects", authenticateToken, projectsRouter);
 
 // Global error handler (must be last)
 app.use(errorHandler(logger));

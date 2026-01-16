@@ -19,6 +19,7 @@ import {
   getSessionWithMessages,
   renameSession,
   setSessionPinned,
+  assignSessionToProject,
   deleteSessionById,
 } from "../db/models/postgres_session_queries.js";
 
@@ -114,9 +115,9 @@ router.get("/:id/messages", async (req, res) => {
  *   Error (400): { error: "No updatable fields provided" }
  *   Error (500): { error: "Failed to update session" }
  */
-// Update session properties (title, pinned)
+// Update session properties (title, pinned, project_id)
 router.patch("/:id", async (req, res) => {
-  const { title, pinned } = req.body || {};
+  const { title, pinned, project_id } = req.body || {};
 
   try {
     if (typeof title !== "undefined") {
@@ -126,6 +127,11 @@ router.patch("/:id", async (req, res) => {
 
     if (typeof pinned !== "undefined") {
       const updated = await setSessionPinned(req.params.id, pinned);
+      return res.json(updated);
+    }
+
+    if (typeof project_id !== "undefined") {
+      const updated = await assignSessionToProject(req.params.id, project_id);
       return res.json(updated);
     }
 

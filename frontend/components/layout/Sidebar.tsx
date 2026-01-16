@@ -7,7 +7,9 @@ import {
   Bars3Icon,
   Cog6ToothIcon,
   EllipsisVerticalIcon,
-  BookmarkIcon,
+  FolderIcon,
+  ChevronRightIcon,
+  ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 import {
   BookmarkIcon as BookmarkIconSolid,
@@ -16,6 +18,8 @@ import { useEffect, useState } from "react";
 import SessionActionsDropdown from "../chat/SessionActionsDropdown";
 import RenameSessionModal from "../chat/RenameSessionModal";
 import DeleteSessionModal from "../chat/DeleteSessionModal";
+import NewProjectModal from "../chat/NewProjectModal";
+import AddToProjectModal from "../chat/AddToProjectModal";
 import SettingsPopup from "./SettingsPopup";
 import { useAuth } from "@/lib/hooks/useAuth";
 
@@ -28,8 +32,12 @@ export default function Sidebar() {
 
   const {
     sessions,
+    projects,
     loadSessions,
-    startNewSession,
+    loadProjects,
+    createProject,
+    assignSessionToProject,
+    // startNewSession, // Unused
     selectSession,
     currentSessionId,
     renameSession,
@@ -58,9 +66,9 @@ export default function Sidebar() {
     resetToDefault();
   };
 
-  const handleSelectSession = (id: string) => {
-    selectSession(id);
-  };
+  // const handleSelectSession = (id: string) => { // Unused
+  //   selectSession(id);
+  // };
 
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
   const [dropdownSessionId, setDropdownSessionId] = useState<string | null>(null);
@@ -77,6 +85,25 @@ export default function Sidebar() {
     id: string;
     title: string;
   } | null>(null);
+  const [newProjectModalOpen, setNewProjectModalOpen] = useState(false);
+  const [addToProjectModal, setAddToProjectModal] = useState<{
+    sessionId: string;
+    currentProjectId?: string | null;
+  } | null>(null);
+
+  // Track expanded state of project folders
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+
+  const toggleProject = (projectId: string) => {
+    const newExpanded = new Set(expandedProjects);
+    if (newExpanded.has(projectId)) {
+      newExpanded.delete(projectId);
+    } else {
+      newExpanded.add(projectId);
+    }
+    setExpandedProjects(newExpanded);
+  };
+
   const [settingsPopupOpen, setSettingsPopupOpen] = useState(false);
   const [settingsPopupPosition, setSettingsPopupPosition] = useState({ bottom: 0, left: 0 });
 
@@ -127,6 +154,14 @@ export default function Sidebar() {
     setDropdownSessionId(null);
   };
 
+  const handleAddToProjectFromDropdown = (sessionId: string) => {
+    const session = sessions.find((s) => s.id === sessionId);
+    if (session) {
+      setAddToProjectModal({ sessionId, currentProjectId: session.project_id });
+    }
+    setDropdownSessionId(null);
+  };
+
   const handleDeleteConfirm = () => {
     if (deleteModal) {
       deleteSession(deleteModal.id);
@@ -160,20 +195,114 @@ export default function Sidebar() {
     }
   }, [currentSessionId, dockInput]);
 
-  // Load sessions from the server when the component mounts
+  // Load sessions and projects from the server when the component mounts
   useEffect(() => {
     loadSessions().catch((err) => {
       // swallow - store will handle errors if necessary
       console.error("Failed to load sessions:", err);
     });
-  }, [loadSessions]);
+    loadProjects().catch((err) => {
+      console.error("Failed to load projects:", err);
+    });
+  }, [loadSessions, loadProjects]);
 
-  // Refresh sessions whenever the sidebar is opened so user sees latest
   useEffect(() => {
     if (sidebarOpen) {
       loadSessions().catch((err) => console.error("Failed to refresh sessions:", err));
+      loadProjects().catch((err) => console.error("Failed to refresh projects:", err));
     }
-  }, [sidebarOpen, loadSessions]);
+  }, [sidebarOpen, loadSessions, loadProjects]);
+
+  // Group sessions by project
+  const sessionsInProjects = new Map<string, typeof sessions>();
+  const unassignedSessions = sessions.filter(s => !s.project_id);
+
+  projects.forEach(project => {
+    sessionsInProjects.set(project.id, sessions.filter(s => s.project_id === project.id));
+  });
+
+  // Helper to render a session item (DRY)
+  const renderSessionItem = (session: typeof sessions[0]) => {
+    const isActive = session.id === currentSessionId;
+    const isHovered = hoveredSessionId === session.id;
+    const isRecentlyUpdated = session.id === lastUpdatedSessionId;
+    const showDots = isActive || isHovered;
+    const isPinned = session.pinned || false;
+    const isTruncated = session.title.length > 22;
+    const displayTitle = isTruncated
+      ? session.title.slice(0, 22) + "…"
+      : session.title;
+
+    return (
+      <div
+        key={session.id}
+        className={`
+            flex items-center
+            rounded-xl
+            transition-colors duration-200
+            ${isActive
+            ? "bg-[#e4edfd]"
+            : "bg-transparent"}
+            ${!isActive && "hover:bg-[#EAEAEA]"}
+            ${isRecentlyUpdated ? " session-enter" : ""}
+          `}
+        onMouseEnter={() => setHoveredSessionId(session.id)}
+        onMouseLeave={() => setHoveredSessionId(null)}
+      >
+        {/* Pin Icon - clickable to unpin */}
+        {isPinned && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              unpinSession(session.id);
+            }}
+            className={`
+                p-1.5 mr-1
+                ${isActive ? "text-blue-700" : "text-[#606060]"}
+                hover:bg-[#EAEAEA] rounded
+                transition-colors duration-150
+              `}
+            aria-label="Unpin session"
+          >
+            <BookmarkIconSolid className="w-4 h-4" />
+          </button>
+        )}
+
+        <a
+          onClick={() => selectSession(session.id)}
+          className={`
+              block cursor-pointer
+              px-3 py-2.5 text-sm
+              flex items-center
+              min-w-0
+              flex-1
+              ${isActive ? "text-blue-700" : "text-[#1A1A1A]"}
+            `}
+        >
+          <span
+            className="font-medium truncate"
+            title={isTruncated ? session.title : undefined}
+          >
+            {displayTitle}
+          </span>
+        </a>
+
+        {showDots && (
+          <button
+            onClick={(e) => handleMoreOptions(e, session.id)}
+            className={`
+                p-1.5
+                ${isActive ? "text-blue-700" : "text-[#606060]"}
+                transition-colors duration-150
+              `}
+            aria-label="More options"
+          >
+            <EllipsisVerticalIcon className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="relative flex h-full">
@@ -206,7 +335,7 @@ export default function Sidebar() {
         </div>
 
         {/* NEW SESSION BUTTON */}
-        <div className="p-3">
+        <div className="px-3 pt-3">
           <button
             onClick={handleNewSession}
             className="
@@ -232,93 +361,72 @@ export default function Sidebar() {
           </button>
         </div>
 
+        {/* NEW PROJECT BUTTON */}
+        <div className="px-3 py-2">
+          <button
+            onClick={() => setNewProjectModalOpen(true)}
+            className="
+                    w-full text-left
+                    px-3 py-2
+                    text-sm text-[#606060] hover:text-[#1A1A1A]
+                    hover:bg-[#EAEAEA] rounded-lg
+                    transition-all duration-200
+                    flex items-center gap-2
+                "
+          >
+            <FolderIcon className="w-4 h-4" />
+            <span className={`${sidebarOpen ? "opacity-100" : "opacity-0 w-0 overflow-hidden"}`}>
+              New Project
+            </span>
+          </button>
+        </div>
+
         {/* SESSION HISTORY */}
         {sidebarOpen && (
           <div className="flex-1 overflow-y-auto px-3 py-2">
-            {sessions.length === 0 && (
-              <p className="text-[#999] text-sm">No history yet…</p>
-            )}
-            {sessions.map((session) => {
-              const isActive = session.id === currentSessionId;
-              const isHovered = hoveredSessionId === session.id;
-              const isRecentlyUpdated = session.id === lastUpdatedSessionId;
-              const showDots = isActive || isHovered;
-              const isPinned = session.pinned || false;
-              const isTruncated = session.title.length > 22;
-              const displayTitle = isTruncated
-                ? session.title.slice(0, 22) + "…"
-                : session.title;
+
+            {/* PROJECTS LIST */}
+            {projects.map(project => {
+              const projectSessions = sessionsInProjects.get(project.id) || [];
+              const isExpanded = expandedProjects.has(project.id);
 
               return (
-                <div
-                  key={session.id}
-                  className={`
-                    flex items-center
-                    rounded-xl
-                    transition-colors duration-200
-                    ${isActive
-                      ? "bg-[#e4edfd]"
-                      : "bg-transparent"}
-                    ${!isActive && "hover:bg-[#EAEAEA]"}
-                    ${isRecentlyUpdated ? " session-enter" : ""}
-                  `}
-                  onMouseEnter={() => setHoveredSessionId(session.id)}
-                  onMouseLeave={() => setHoveredSessionId(null)}
-                >
-                  {/* Pin Icon - clickable to unpin */}
-                  {isPinned && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        unpinSession(session.id);
-                      }}
-                      className={`
-                        p-1.5 mr-1
-                        ${isActive ? "text-blue-700" : "text-[#606060]"}
-                        hover:bg-[#EAEAEA] rounded
-                        transition-colors duration-150
-                      `}
-                      aria-label="Unpin session"
-                    >
-                      <BookmarkIconSolid className="w-4 h-4" />
-                    </button>
-                  )}
-
-                  <a
-                    onClick={() => selectSession(session.id)}
-                    className={`
-                      block cursor-pointer
-                      px-3 py-2.5 text-sm
-                      flex items-center
-                      min-w-0
-                      flex-1
-                      ${isActive ? "text-blue-700" : "text-[#1A1A1A]"}
-                    `}
+                <div key={project.id} className="mb-2">
+                  <button
+                    onClick={() => toggleProject(project.id)}
+                    className="w-full flex items-center justify-between p-2 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors group"
                   >
-                    <span
-                      className="font-medium truncate"
-                      title={isTruncated ? session.title : undefined}
-                    >
-                      {displayTitle}
-                    </span>
-                  </a>
+                    <div className="flex items-center gap-2 min-w-0">
+                      {isExpanded ? (
+                        <ChevronDownIcon className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
+                      ) : (
+                        <ChevronRightIcon className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
+                      )}
+                      <FolderIcon className="w-4 h-4 text-gray-500" />
+                      <span className="truncate">{project.name}</span>
+                      <span className="text-xs text-gray-400 ml-1">({projectSessions.length})</span>
+                    </div>
+                  </button>
 
-                  {showDots && (
-                    <button
-                      onClick={(e) => handleMoreOptions(e, session.id)}
-                      className={`
-                        p-1.5
-                        ${isActive ? "text-blue-700" : "text-[#606060]"}
-                        transition-colors duration-150
-                      `}
-                      aria-label="More options"
-                    >
-                      <EllipsisVerticalIcon className="w-4 h-4" />
-                    </button>
+                  {isExpanded && (
+                    <div className="pl-4 mt-1 space-y-0.5 border-l-2 border-gray-100 ml-2.5">
+                      {projectSessions.length === 0 && (
+                        <div className="text-xs text-gray-400 py-1 pl-2 font-light italic">Empty project</div>
+                      )}
+                      {projectSessions.map(session => renderSessionItem(session))}
+                    </div>
                   )}
                 </div>
               );
             })}
+
+            {/* UNASSIGNED SESSIONS */}
+            <div className="mt-2">
+              {sessions.length === 0 && (
+                <p className="text-[#999] text-sm">No history yet…</p>
+              )}
+              {unassignedSessions.map((session) => renderSessionItem(session))}
+            </div>
           </div>
         )}
 
@@ -363,6 +471,7 @@ export default function Sidebar() {
             onPin={pinSession}
             onUnpin={unpinSession}
             onDelete={handleDeleteFromDropdown}
+            onAddToProject={handleAddToProjectFromDropdown}
             isPinned={session?.pinned || false}
           />
         );
@@ -383,6 +492,34 @@ export default function Sidebar() {
           sessionTitle={deleteModal.title}
           onClose={() => setDeleteModal(null)}
           onConfirm={handleDeleteConfirm}
+        />
+      )}
+
+      {/* NEW PROJECT MODAL */}
+      {newProjectModalOpen && (
+        <NewProjectModal
+          onClose={() => setNewProjectModalOpen(false)}
+          onConfirm={(name) => {
+            createProject(name);
+            setNewProjectModalOpen(false);
+          }}
+        />
+      )}
+
+      {/* ADD TO PROJECT MODAL */}
+      {addToProjectModal && (
+        <AddToProjectModal
+          projects={projects}
+          currentProjectId={addToProjectModal.currentProjectId}
+          onClose={() => setAddToProjectModal(null)}
+          onConfirm={(projectId) => {
+            assignSessionToProject(addToProjectModal.sessionId, projectId);
+            setAddToProjectModal(null);
+            // Also expand the project folder if adding to one
+            if (projectId) {
+              setExpandedProjects(prev => new Set(prev).add(projectId));
+            }
+          }}
         />
       )}
 

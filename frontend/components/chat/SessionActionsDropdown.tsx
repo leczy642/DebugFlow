@@ -1,11 +1,12 @@
 // components/chat/SessionActionsDropdown.tsx
 // components/chat/SessionActionsDropdown.tsx
 import { useEffect, useRef } from "react";
-import { 
-  PencilIcon, 
-  BookmarkIcon, 
-  ShareIcon, 
-  TrashIcon 
+import {
+  PencilIcon,
+  BookmarkIcon,
+  ShareIcon,
+  TrashIcon,
+  FolderIcon
 } from "@heroicons/react/24/outline";
 
 interface SessionActionsDropdownProps {
@@ -15,6 +16,7 @@ interface SessionActionsDropdownProps {
   onPin: (id: string) => void;
   onUnpin: (id: string) => void;
   onDelete: (id: string) => void;
+  onAddToProject: (id: string) => void;
   isPinned: boolean;
   position: { top: number; right: number; above?: boolean };
 }
@@ -26,6 +28,7 @@ export default function SessionActionsDropdown({
   onPin,
   onUnpin,
   onDelete,
+  onAddToProject,
   isPinned,
   position,
 }: SessionActionsDropdownProps) {
@@ -45,8 +48,8 @@ export default function SessionActionsDropdown({
     <div
       ref={dropdownRef}
       className="fixed z-50 min-w-[115px] bg-white rounded-lg shadow-lg border border-gray-200 py-1"
-      style={{ 
-        top: `${position.top}px`, 
+      style={{
+        top: `${position.top}px`,
         right: `${position.right}px`,
         bottom: position.above ? 'auto' : undefined,
       }}
@@ -78,6 +81,16 @@ export default function SessionActionsDropdown({
       <button className="w-full text-left px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2">
         <ShareIcon className="h-4 w-4" />
         Share
+      </button>
+      <button
+        onClick={() => {
+          onAddToProject(sessionId);
+          onClose();
+        }}
+        className="w-full text-left px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+      >
+        <FolderIcon className="h-4 w-4" />
+        Add to project
       </button>
       <div className="border-t border-gray-100 my-0.5"></div>
       <button

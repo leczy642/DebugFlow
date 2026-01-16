@@ -48,10 +48,17 @@ type Session = {
   title: string;
   messages: Message[];
   pinned?: boolean;
+  project_id?: string | null;
+};
+
+type Project = {
+  id: string;
+  name: string;
 };
 
 type ChatStore = {
   sessions: Session[];
+  projects: Project[];
   currentSessionId: string | null;
   messages: Message[];
   pendingSession: boolean;
@@ -70,6 +77,10 @@ type ChatStore = {
   stopGeneration: () => void;
 
   loadSessions: () => Promise<void>;
+  loadProjects: () => Promise<void>;
+  createProject: (name: string) => Promise<void>;
+  assignSessionToProject: (sessionId: string, projectId: string | null) => Promise<void>;
+
   startNewSession: () => Promise<void>;
   selectSession: (id: string) => Promise<void>;
   sendMessage: (content: string, parentId?: string | null, skipUserMessage?: boolean) => Promise<void>;
@@ -88,6 +99,7 @@ type ChatStore = {
 
 export const useChatStore = create<ChatStore>((set, get) => ({
   sessions: [],
+  projects: [],
   currentSessionId: null,
   messages: [],
   pendingSession: false,
@@ -110,6 +122,31 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         pinned: typeof s.pinned === "boolean" ? s.pinned : false,
       })),
     });
+  },
+
+  loadProjects: async () => {
+    const projects = await api.get("/api/projects");
+    set({ projects });
+  },
+
+  createProject: async (name: string) => {
+    const project = await api.post("/api/projects", { name });
+    set((state) => ({
+      projects: [project, ...state.projects],
+    }));
+  },
+
+  assignSessionToProject: async (sessionId: string, projectId: string | null) => {
+    const prev = get().sessions;
+    set((state) => ({
+      sessions: state.sessions.map((s) => s.id === sessionId ? { ...s, project_id: projectId } : s)
+    }));
+
+    try {
+      await api.patch(`/api/sessions/${sessionId}`, { project_id: projectId });
+    } catch (err) {
+      set({ sessions: prev });
+    }
   },
 
   /* ----------------------------------------------------------------

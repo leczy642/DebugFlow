@@ -120,15 +120,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     const session = await api.post("/api/sessions", {});
 
-    set((state) => ({
-      sessions: [
-        { ...session, messages: [], pinned: false },
-        ...state.sessions,
-      ],
-      currentSessionId: session.id,
-      messages: [],
-      pendingSession: false,
-    }));
+    set((state) => {
+      // Insert new unpinned session after all pinned sessions
+      const pinned = state.sessions.filter((s) => s.pinned);
+      const unpinned = state.sessions.filter((s) => !s.pinned);
+
+      const newSessionWithMeta = { ...session, messages: [], pinned: false };
+
+      return {
+        sessions: [...pinned, newSessionWithMeta, ...unpinned],
+        currentSessionId: session.id,
+        messages: [],
+        pendingSession: false,
+      };
+    });
   },
 
   /* ----------------------------------------------------------------
@@ -433,7 +438,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }));
 
       try {
-        await api.put(`/api/sessions/${id}`, { title: trimmed });
+        await api.patch(`/api/sessions/${id}`, { title: trimmed });
       } catch (err) {
         set({ sessions: prev });
       }
@@ -443,12 +448,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Optimistic pin with server persistence
     (async (id: string) => {
       const prev = get().sessions;
-      const updated = get().sessions.map((s) => (s.id === id ? { ...s, pinned: true } : s));
-      const reordered = [...updated.filter((s) => s.pinned), ...updated.filter((s) => !s.pinned)];
-      set({ sessions: reordered });
+      const sessionToPin = prev.find((s) => s.id === id);
+      if (!sessionToPin) return;
+
+      // Update pinned status
+      const updatedSession = { ...sessionToPin, pinned: true };
+
+      // Reorder: New pinned session goes to TOP of pinned list
+      // (assuming user wants their most recently pinned item accessible, or we treat it as "updated")
+      const otherPinned = prev.filter((s) => s.id !== id && s.pinned);
+      const unpinned = prev.filter((s) => s.id !== id && !s.pinned);
+
+      set({ sessions: [updatedSession, ...otherPinned, ...unpinned] });
 
       try {
-        await api.put(`/api/sessions/${id}`, { pinned: true });
+        await api.patch(`/api/sessions/${id}`, { pinned: true });
       } catch (err) {
         set({ sessions: prev });
       }
@@ -458,12 +472,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Optimistic unpin with server persistence
     (async (id: string) => {
       const prev = get().sessions;
-      const updated = get().sessions.map((s) => (s.id === id ? { ...s, pinned: false } : s));
-      const reordered = [...updated.filter((s) => s.pinned), ...updated.filter((s) => !s.pinned)];
-      set({ sessions: reordered });
+      const sessionToUnpin = prev.find((s) => s.id === id);
+      if (!sessionToUnpin) return;
+
+      const updatedSession = { ...sessionToUnpin, pinned: false };
+
+      // Reorder: Unpinned session goes to TOP of unpinned list (recently modified)
+      const pinned = prev.filter((s) => s.id !== id && s.pinned);
+      const otherUnpinned = prev.filter((s) => s.id !== id && !s.pinned);
+
+      set({ sessions: [...pinned, updatedSession, ...otherUnpinned] });
 
       try {
-        await api.put(`/api/sessions/${id}`, { pinned: false });
+        await api.patch(`/api/sessions/${id}`, { pinned: false });
       } catch (err) {
         set({ sessions: prev });
       }

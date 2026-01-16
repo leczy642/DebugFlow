@@ -11,7 +11,7 @@ export async function getAllSessions(userId) {
       `SELECT id, title, pinned, created_at, updated_at
        FROM sessions
        WHERE user_id = $1
-       ORDER BY updated_at DESC`,
+       ORDER BY pinned DESC, updated_at DESC`,
       [userId]
     );
     return rows;
@@ -25,7 +25,7 @@ export async function getAllSessions(userId) {
         `SELECT id, title, pinned, created_at, updated_at
          FROM sessions
          WHERE user_id = $1
-         ORDER BY updated_at DESC`,
+         ORDER BY pinned DESC, updated_at DESC`,
         [userId]
       );
       return rows;

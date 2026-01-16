@@ -109,6 +109,8 @@ export default function Sidebar() {
 
   // Track expanded state of project folders
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [projectsListExpanded, setProjectsListExpanded] = useState(true);
+  const [historyListExpanded, setHistoryListExpanded] = useState(true);
 
   const toggleProject = (projectId: string) => {
     const newExpanded = new Set(expandedProjects);
@@ -454,8 +456,25 @@ export default function Sidebar() {
         {sidebarOpen && (
           <div className="flex-1 overflow-y-auto px-3 py-2">
 
+            {/* PROJECTS HEADER / TOGGLE */}
+            {projects.length > 0 && (
+              <div className="mb-1">
+                <button
+                  onClick={() => setProjectsListExpanded(!projectsListExpanded)}
+                  className="w-full flex items-center gap-2 pl-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider hover:text-gray-700 transition-colors"
+                >
+                  {projectsListExpanded ? (
+                    <ChevronDownIcon className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronRightIcon className="w-3.5 h-3.5" />
+                  )}
+                  <span>Projects</span>
+                </button>
+              </div>
+            )}
+
             {/* PROJECTS LIST */}
-            {projects.map(project => {
+            {projectsListExpanded && projects.map(project => {
               const projectSessions = sessionsInProjects.get(project.id) || [];
               const isExpanded = expandedProjects.has(project.id);
               const isHovered = hoveredProjectId === project.id;
@@ -469,14 +488,10 @@ export default function Sidebar() {
                 >
                   <button
                     onClick={() => toggleProject(project.id)}
-                    className="w-full flex items-center justify-between p-2 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors group relative"
+                    className="w-full flex items-center justify-between pl-3 pr-2 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors group relative"
                   >
                     <div className="flex items-center gap-2 min-w-0 flex-1">
-                      {isExpanded ? (
-                        <ChevronDownIcon className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-                      ) : (
-                        <ChevronRightIcon className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-                      )}
+                      {/* Removed individual chevron */}
                       <FolderIcon className="w-4 h-4 text-gray-500" />
                       <span className="truncate">{project.name}</span>
                       <span className="text-xs text-gray-400 ml-1">({projectSessions.length})</span>
@@ -504,13 +519,30 @@ export default function Sidebar() {
               );
             })}
 
-            {/* UNASSIGNED SESSIONS */}
-            <div className="mt-2">
-              {sessions.length === 0 && (
-                <p className="text-[#999] text-sm">No history yet…</p>
-              )}
-              {unassignedSessions.map((session) => renderSessionItem(session))}
+            {/* HISTORY HEADER / TOGGLE */}
+            <div className="mt-4 mb-1">
+              <button
+                onClick={() => setHistoryListExpanded(!historyListExpanded)}
+                className="w-full flex items-center gap-2 pl-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider hover:text-gray-700 transition-colors"
+              >
+                {historyListExpanded ? (
+                  <ChevronDownIcon className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronRightIcon className="w-3.5 h-3.5" />
+                )}
+                <span>History</span>
+              </button>
             </div>
+
+            {/* UNASSIGNED SESSIONS LIST */}
+            {historyListExpanded && (
+              <div className="mt-1">
+                {sessions.length === 0 && (
+                  <p className="text-[#999] text-sm pl-4">No history yet…</p>
+                )}
+                {unassignedSessions.map((session) => renderSessionItem(session))}
+              </div>
+            )}
           </div>
         )}
 

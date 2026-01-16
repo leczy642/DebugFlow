@@ -6,7 +6,8 @@ import {
   BookmarkIcon,
   ShareIcon,
   TrashIcon,
-  FolderIcon
+  FolderIcon,
+  FolderMinusIcon
 } from "@heroicons/react/24/outline";
 
 interface SessionActionsDropdownProps {
@@ -17,7 +18,9 @@ interface SessionActionsDropdownProps {
   onUnpin: (id: string) => void;
   onDelete: (id: string) => void;
   onAddToProject: (id: string) => void;
+  onRemoveFromProject?: (id: string) => void;
   isPinned: boolean;
+  isInProject?: boolean;
   position: { top: number; right: number; above?: boolean };
 }
 
@@ -29,7 +32,9 @@ export default function SessionActionsDropdown({
   onUnpin,
   onDelete,
   onAddToProject,
+  onRemoveFromProject,
   isPinned,
+  isInProject,
   position,
 }: SessionActionsDropdownProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -82,16 +87,29 @@ export default function SessionActionsDropdown({
         <ShareIcon className="h-4 w-4" />
         Share
       </button>
-      <button
-        onClick={() => {
-          onAddToProject(sessionId);
-          onClose();
-        }}
-        className="w-full text-left px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-      >
-        <FolderIcon className="h-4 w-4" />
-        Add to project
-      </button>
+      {isInProject && onRemoveFromProject ? (
+        <button
+          onClick={() => {
+            onRemoveFromProject(sessionId);
+            onClose();
+          }}
+          className="w-full text-left px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+        >
+          <FolderMinusIcon className="h-4 w-4" />
+          Remove from project
+        </button>
+      ) : (
+        <button
+          onClick={() => {
+            onAddToProject(sessionId);
+            onClose();
+          }}
+          className="w-full text-left px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+        >
+          <FolderIcon className="h-4 w-4" />
+          Add to project
+        </button>
+      )}
       <div className="border-t border-gray-100 my-0.5"></div>
       <button
         onClick={() => {

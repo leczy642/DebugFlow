@@ -588,7 +588,9 @@ export default function Sidebar() {
             onUnpin={unpinSession}
             onDelete={handleDeleteFromDropdown}
             onAddToProject={handleAddToProjectFromDropdown}
+            onRemoveFromProject={(id) => assignSessionToProject(id, null)}
             isPinned={session?.pinned || false}
+            isInProject={!!session?.project_id}
           />
         );
       })()}

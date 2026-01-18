@@ -49,6 +49,7 @@ type Session = {
   messages: Message[];
   pinned?: boolean;
   project_id?: string | null;
+  created_at?: string;
 };
 
 type Project = {
@@ -60,6 +61,7 @@ type ChatStore = {
   sessions: Session[];
   projects: Project[];
   currentSessionId: string | null;
+  selectedProjectId: string | null;
   messages: Message[];
   pendingSession: boolean;
   lastUpdatedSessionId: string | null;
@@ -85,6 +87,7 @@ type ChatStore = {
 
   startNewSession: () => Promise<void>;
   selectSession: (id: string) => Promise<void>;
+  selectProject: (id: string | null) => void;
   sendMessage: (content: string, parentId?: string | null, skipUserMessage?: boolean) => Promise<void>;
   editMessage: (messageId: string, newContent: string) => Promise<void>;
   regenerateResponse: (messageId: string) => Promise<void>;
@@ -103,6 +106,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   sessions: [],
   projects: [],
   currentSessionId: null,
+  selectedProjectId: null,
   messages: [],
   pendingSession: false,
   lastUpdatedSessionId: null,
@@ -218,6 +222,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       messages,
       pendingSession: false,
       awaitingSessionId: null, // Clear loading state when switching sessions
+    });
+  },
+
+  selectProject: (id: string | null) => {
+    set({
+      selectedProjectId: id,
+      currentSessionId: null, // Deselect any active session
+      messages: [],
+      pendingSession: false,
     });
   },
 
@@ -596,7 +609,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
      - Reset pending/awaiting flags
   ----------------------------- */
   resetToDefault: () =>
-    set({ currentSessionId: null, messages: [], pendingSession: false, awaitingSessionId: null, activeRequestId: null, abortController: null, isStreaming: false }),
+    set({ currentSessionId: null, selectedProjectId: null, messages: [], pendingSession: false, awaitingSessionId: null, activeRequestId: null, abortController: null, isStreaming: false }),
 
   stopGeneration: () => {
     const { abortController } = get();

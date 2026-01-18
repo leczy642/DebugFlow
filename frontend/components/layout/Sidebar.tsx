@@ -51,6 +51,8 @@ export default function Sidebar() {
     deleteSession,
     lastUpdatedSessionId,
     resetToDefault,
+    selectedProjectId,
+    selectProject,
   } = useChatStore();
 
   const handleNewSession = () => {
@@ -120,6 +122,18 @@ export default function Sidebar() {
       newExpanded.add(projectId);
     }
     setExpandedProjects(newExpanded);
+  };
+
+  const handleProjectClick = (projectId: string) => {
+    selectProject(projectId);
+    centerInput();
+
+    // Ensure it's expanded so user sees the sessions if they want
+    if (!expandedProjects.has(projectId)) {
+      const newExpanded = new Set(expandedProjects);
+      newExpanded.add(projectId);
+      setExpandedProjects(newExpanded);
+    }
   };
 
   const [settingsPopupOpen, setSettingsPopupOpen] = useState(false);
@@ -476,6 +490,7 @@ export default function Sidebar() {
             {/* PROJECTS LIST */}
             {projectsListExpanded && projects.map(project => {
               const projectSessions = sessionsInProjects.get(project.id) || [];
+              const isSelected = selectedProjectId === project.id;
               const isExpanded = expandedProjects.has(project.id);
               const isHovered = hoveredProjectId === project.id;
 
@@ -486,26 +501,48 @@ export default function Sidebar() {
                   onMouseEnter={() => setHoveredProjectId(project.id)}
                   onMouseLeave={() => setHoveredProjectId(null)}
                 >
-                  <button
-                    onClick={() => toggleProject(project.id)}
-                    className="w-full flex items-center justify-between pl-3 pr-2 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors group relative"
+                  <div
+                    className={`
+                      w-full flex items-center justify-between pl-3 pr-2 py-2 
+                      text-sm font-medium rounded-lg transition-colors group relative
+                      ${isSelected ? "bg-[#e4edfd] text-blue-700" : "text-gray-700 hover:bg-gray-200"}
+                    `}
                   >
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      {/* Removed individual chevron */}
-                      <FolderIcon className="w-4 h-4 text-gray-500" />
+                    <div
+                      className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer"
+                      onClick={() => handleProjectClick(project.id)}
+                    >
+                      <FolderIcon className={`w-4 h-4 ${isSelected ? "text-blue-700" : "text-gray-500"}`} />
                       <span className="truncate">{project.name}</span>
-                      <span className="text-xs text-gray-400 ml-1">({projectSessions.length})</span>
+                      <span className={`text-xs ml-1 ${isSelected ? "text-blue-500" : "text-gray-400"}`}>
+                        ({projectSessions.length})
+                      </span>
                     </div>
 
-                    {isHovered && (
-                      <div
-                        onClick={(e) => handleProjectMoreOptions(e, project.id)}
+                    <div className="flex items-center gap-1">
+                      {isHovered && (
+                        <div
+                          onClick={(e) => handleProjectMoreOptions(e, project.id)}
+                          className="p-0.5 rounded-md hover:bg-gray-300 text-gray-500 transition-colors cursor-pointer"
+                        >
+                          <EllipsisVerticalIcon className="w-4 h-4" />
+                        </div>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleProject(project.id);
+                        }}
                         className="p-0.5 rounded-md hover:bg-gray-300 text-gray-500 transition-colors"
                       >
-                        <EllipsisVerticalIcon className="w-4 h-4" />
-                      </div>
-                    )}
-                  </button>
+                        {isExpanded ? (
+                          <ChevronDownIcon className="w-3.5 h-3.5" />
+                        ) : (
+                          <ChevronRightIcon className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
 
                   {isExpanded && (
                     <div className="pl-4 mt-1 space-y-0.5 border-l-2 border-gray-100 ml-2.5">

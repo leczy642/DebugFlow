@@ -51,6 +51,11 @@ export default function InputBar() {
   // UI store hooks
   const { inputBarCentered, dockInput, sidebarOpen } = useUIStore();
 
+  const projects = useChatStore((s) => s.projects);
+  const sessions = useChatStore((s) => s.sessions);
+  const selectedProjectId = useChatStore((s) => s.selectedProjectId);
+  const selectSession = useChatStore((s) => s.selectSession);
+
   // Clear the local input text when entering centered "new session" mode so the
   // input does not show stale text when a user starts a new session mid-response.
   useEffect(() => {
@@ -93,15 +98,31 @@ export default function InputBar() {
     const sidebarWidth = sidebarOpen ? 256 : 64;
     const availableWidth = `calc(100% - ${sidebarWidth}px)`;
 
+    const selectedProject = projects.find(p => p.id === selectedProjectId);
+    const projectSessions = sessions.filter(s => s.project_id === selectedProjectId);
+
     return (
       <div
         className="fixed top-1/2 -translate-y-1/2 transition-all duration-300"
         style={{ left: `${sidebarWidth}px`, width: availableWidth }}
       >
         <div className="max-w-4xl mx-auto px-4">
-          <h1 className="text-gray-500 text-3xl font-medium text-center mb-6">
-            Start a new debug session.
-          </h1>
+          {selectedProject ? (
+            <div className="flex items-center gap-3 mb-6 justify-center">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+              </div>
+              <h1 className="text-gray-900 text-3xl font-semibold">
+                {selectedProject.name}
+              </h1>
+            </div>
+          ) : (
+            <h1 className="text-gray-500 text-3xl font-medium text-center mb-6">
+              Start a new debug session.
+            </h1>
+          )}
 
           <div className="relative">
             <textarea
@@ -142,6 +163,30 @@ export default function InputBar() {
               </button>
             )}
           </div>
+
+          {selectedProject && projectSessions.length > 0 && (
+            <div className="mt-8">
+              <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                Recent Sessions in this Project
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {projectSessions.slice(0, 6).map((session) => (
+                  <button
+                    key={session.id}
+                    onClick={() => selectSession(session.id)}
+                    className="flex flex-col items-start p-3 bg-white border border-gray-200 rounded-xl hover:border-blue-400 hover:shadow-sm transition-all text-left group"
+                  >
+                    <span className="text-sm font-medium text-gray-900 group-hover:text-blue-600 truncate w-full">
+                      {session.title}
+                    </span>
+                    <span className="text-[11px] text-gray-400 mt-1">
+                      Added on {session.created_at ? new Date(session.created_at).toLocaleDateString() : 'recently'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

@@ -48,7 +48,9 @@ export default function Sidebar() {
     } = useChatStore();
 
     const handleNewSession = () => {
-        if (inputBarCentered) return;
+        // If already in the default centered mode (no project selected), do nothing
+        if (inputBarCentered && !selectedProjectId) return;
+
         centerInput();
         resetToDefault();
     };

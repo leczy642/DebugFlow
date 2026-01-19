@@ -53,7 +53,7 @@ export default function InputBar() {
         if (!text.trim() || isAwaitingResponse) return;
 
         if (!currentSessionId) {
-            await startNewSession();
+            await startNewSession(selectedProjectId);
             await new Promise((r) => setTimeout(r, 0));
         }
 

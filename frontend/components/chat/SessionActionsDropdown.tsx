@@ -58,22 +58,22 @@ export default function SessionActionsDropdown({
     ? position.above
       // Place above the anchor element
       ? {
-          bottom: "100%",
-          right: 0,
-          marginBottom: "4px",
-        }
+        bottom: "100%",
+        right: 0,
+        marginBottom: "4px",
+      }
       // Default: place below the anchor element
       : {
-          top: "100%",
-          right: 0,
-          marginTop: "4px",
-        }
+        top: "100%",
+        right: 0,
+        marginTop: "4px",
+      }
     : {
-        top: `${position.top}px`,
-        right: position.right !== undefined ? `${position.right}px` : undefined,
-        left: position.left !== undefined ? `${position.left}px` : undefined,
-        bottom: position.above ? "auto" : undefined,
-      };
+      top: `${position.top}px`,
+      right: position.right !== undefined ? `${position.right}px` : undefined,
+      left: position.left !== undefined ? `${position.left}px` : undefined,
+      bottom: position.above ? "auto" : undefined,
+    };
 
   return (
     <div
@@ -129,7 +129,7 @@ export default function SessionActionsDropdown({
             className="w-full text-left px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
           >
             <FolderMinusIcon className="h-4 w-4" />
-            Remove from project
+            Remove from folder
           </button>
         </>
       ) : (

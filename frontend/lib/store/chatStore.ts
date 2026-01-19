@@ -90,7 +90,7 @@ type ChatStore = {
   renameProject: (id: string, newName: string) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
 
-  startNewSession: () => Promise<void>;
+  startNewSession: (projectId?: string | null) => Promise<void>;
   selectSession: (id: string) => Promise<void>;
   selectProject: (id: string | null) => void;
   sendMessage: (content: string, parentId?: string | null, skipUserMessage?: boolean) => Promise<void>;
@@ -199,17 +199,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   /* ----------------------------------------------------------------
     CREATE NEW SESSION (SERVER + LOCAL STATE)
  ---------------------------------------------------------------- */
-  startNewSession: async () => {
+  startNewSession: async (projectId: string | null = null) => {
     set({ pendingSession: true });
 
-    const session = await api.post("/api/sessions", {});
+    const session = await api.post("/api/sessions", { project_id: projectId });
 
     set((state) => {
       // Insert new unpinned session after all pinned sessions
       const pinned = state.sessions.filter((s) => s.pinned);
       const unpinned = state.sessions.filter((s) => !s.pinned);
 
-      const newSessionWithMeta = { ...session, messages: [], pinned: false };
+      const newSessionWithMeta = { ...session, messages: [], pinned: false, project_id: projectId };
 
       return {
         sessions: [...pinned, newSessionWithMeta, ...unpinned],
@@ -652,8 +652,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
      - Clear current session selection and messages
      - Reset pending/awaiting flags
   ----------------------------- */
-  resetToDefault: () =>
-    set({ currentSessionId: null, selectedProjectId: null, messages: [], pendingSession: false, awaitingSessionId: null, activeRequestId: null, abortController: null, isStreaming: false }),
+  resetToDefault: () => {
+    const { sessionLoadAbortController } = get();
+    if (sessionLoadAbortController) sessionLoadAbortController.abort();
+
+    set({
+      currentSessionId: null,
+      selectedProjectId: null,
+      messages: [],
+      pendingSession: false,
+      awaitingSessionId: null,
+      activeRequestId: null,
+      abortController: null,
+      isStreaming: false,
+      loadingSessionId: null,
+      sessionLoadRequestId: null,
+      sessionLoadAbortController: null,
+    });
+  },
 
   stopGeneration: () => {
     const { abortController } = get();

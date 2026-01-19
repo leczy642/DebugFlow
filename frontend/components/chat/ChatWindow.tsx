@@ -46,6 +46,7 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { ArrowDownIcon } from "@heroicons/react/24/solid";
 import TypingBubble from "./TypingBubble";
 import { useChatStore } from "../../lib/store/chatStore";
+import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 
 type Message = {
   id?: string;
@@ -56,21 +57,32 @@ type Message = {
 };
 
 export default function ChatWindow() {
-  const { messages, currentSessionId, awaitingSessionId, regenerateResponse, deleteMessage, isStreaming } = useChatStore();
+  const {
+    messages,
+    currentSessionId,
+    awaitingSessionId,
+    loadingSessionId,
+    regenerateResponse,
+    deleteMessage,
+    isStreaming
+  } = useChatStore();
 
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
 
   // State to track which version is selected for each parent node
-  // Key: parentId (or 'root'), Value: selected messageId
   const [activeVersions, setActiveVersions] = useState<Record<string, string>>({});
   const [activeLinkId, setActiveLinkId] = useState<string | null>(null);
 
   const handleLinkClick = (id: string) => {
-    const el = document.getElementById(`msg-${id}`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const index = thread.findIndex(t => t.message.id === id);
+    if (index !== -1 && virtuosoRef.current) {
+      virtuosoRef.current.scrollToIndex({
+        index,
+        align: 'center',
+        behavior: 'smooth'
+      });
       setActiveLinkId(id);
     }
   };
@@ -79,7 +91,6 @@ export default function ChatWindow() {
   const thread = useMemo(() => {
     if (!messages.length) return [];
 
-    // Group by parentId
     const childrenMap = new Map<string, Message[]>();
     const roots: Message[] = [];
 
@@ -93,14 +104,10 @@ export default function ChatWindow() {
     });
 
     const result: { message: Message; siblings: Message[]; index: number; parentIdKey: string }[] = [];
-
-    // Start with roots
     let currentSiblings = roots;
     let parentIdKey = 'root';
 
     while (currentSiblings.length > 0) {
-      // Determine which sibling is active
-      // Default to the last one (most recent) if not set in state
       const activeId = activeVersions[parentIdKey];
       let activeIndex = -1;
 
@@ -113,7 +120,6 @@ export default function ChatWindow() {
       }
 
       const activeMessage = currentSiblings[activeIndex];
-
       result.push({
         message: activeMessage,
         siblings: currentSiblings,
@@ -121,7 +127,6 @@ export default function ChatWindow() {
         parentIdKey
       });
 
-      // Move to next level
       if (activeMessage.id && childrenMap.has(activeMessage.id)) {
         currentSiblings = childrenMap.get(activeMessage.id)!;
         parentIdKey = activeMessage.id;
@@ -140,86 +145,85 @@ export default function ChatWindow() {
     }));
   };
 
+  // Auto-scroll logic for Virtuoso
   useEffect(() => {
-    if (!currentSessionId) return;
-    if (thread.length === 0) return;
-
-    const last = thread[thread.length - 1].message;
-
-    // Only auto-scroll when the last message is from the assistant
-    if (last.role === "assistant") {
-      const el = containerRef.current;
-      if (!el) return;
-
-      // If streaming, only auto-scroll if user is near the bottom
-      if (isStreaming) {
-        const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
-        if (isNearBottom) {
-          if (bottomRef.current) {
-            bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
-          }
-        }
-      } else {
-        // If not streaming (e.g. initial load), force scroll to bottom
-        if (bottomRef.current) {
-          bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
-        } else {
-          el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-        }
-      }
+    if (isStreaming && atBottom && virtuosoRef.current) {
+      virtuosoRef.current.scrollToIndex({
+        index: thread.length - 1,
+        behavior: 'auto'
+      });
     }
-  }, [thread, currentSessionId, isStreaming]);
+  }, [thread.length, isStreaming, atBottom]);
 
-  // show/hide the scroll-to-bottom button based on scroll position
+  // Handle initial scroll or session switch
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+    if (currentSessionId && thread.length > 0 && !isStreaming) {
+      // Small timeout to ensure Virtuoso has rendered
+      const timer = setTimeout(() => {
+        virtuosoRef.current?.scrollToIndex({
+          index: thread.length - 1,
+          behavior: 'auto'
+        });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [currentSessionId, thread.length === 0]); // Trigger on session change or if thread first appears
 
-    const SCROLL_HIDE_THRESHOLD = 20; // px from bottom
-
-    const onScroll = () => {
-      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      const shouldShow = distanceFromBottom > SCROLL_HIDE_THRESHOLD;
-      setShowScrollButton(shouldShow);
-    };
-
-    el.addEventListener("scroll", onScroll, { passive: true });
-    // run once to set initial state
-    onScroll();
-
-    return () => el.removeEventListener("scroll", onScroll);
-  }, []);
+  const isLoading = currentSessionId && loadingSessionId === currentSessionId;
 
   return (
     <>
-      <div id="chat-scroll-container" ref={containerRef} className="flex-1 overflow-y-auto bg-white pt-12">
-        <div className="max-w-4xl mx-auto p-6"> {/* NEW container to match InputBar */}
-          {thread.map((item, index) => (
-            <MessageBubble
-              key={item.message.id || index}
-              id={item.message.id ? `msg-${item.message.id}` : undefined}
-              message={item.message}
-              siblings={item.siblings}
-              currentVersionIndex={item.index}
-              onSelectVersion={(idx) => {
-                const selectedMsg = item.siblings[idx];
-                if (selectedMsg && selectedMsg.id) {
-                  handleSelectVersion(item.parentIdKey, selectedMsg.id);
-                }
-              }}
-              onRegenerate={item.message.id ? () => regenerateResponse(item.message.id!) : undefined}
-              onDelete={item.message.id ? () => deleteMessage(item.message.id!) : undefined}
-              onEdit={item.message.id ? (newContent) => useChatStore.getState().editMessage(item.message.id!, newContent) : undefined}
-              onRestore={item.message.id ? () => useChatStore.getState().restoreMessage(item.message.id!) : undefined}
-              isStreaming={isStreaming}
-            />
-          ))}
+      <div id="chat-scroll-container" className="flex-1 bg-white pt-12 relative h-full">
+        {isLoading && (
+          <div className="absolute inset-0 z-10 bg-white/50 backdrop-blur-[1px] flex items-center justify-center">
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-sm font-medium text-gray-500">Loading messages...</span>
+            </div>
+          </div>
+        )}
 
-          {!!currentSessionId && awaitingSessionId === currentSessionId && <TypingBubble />}
-
-          {/* sentinel element to scroll to */}
-          <div ref={bottomRef} />
-        </div>
+        <Virtuoso
+          ref={virtuosoRef}
+          data={thread}
+          className="h-full"
+          initialTopMostItemIndex={thread.length > 0 ? thread.length - 1 : 0}
+          atBottomStateChange={(bottom) => {
+            setAtBottom(bottom);
+            setShowScrollButton(!bottom);
+          }}
+          atBottomThreshold={200}
+          increaseViewportBy={400}
+          itemContent={(index, item) => (
+            <div className={`max-w-4xl mx-auto px-6 ${index === 0 ? 'pt-6' : ''}`}>
+              <MessageBubble
+                key={item.message.id || index}
+                id={item.message.id ? `msg-${item.message.id}` : undefined}
+                message={item.message}
+                siblings={item.siblings}
+                currentVersionIndex={item.index}
+                onSelectVersion={(idx) => {
+                  const selectedMsg = item.siblings[idx];
+                  if (selectedMsg && selectedMsg.id) {
+                    handleSelectVersion(item.parentIdKey, selectedMsg.id);
+                  }
+                }}
+                onRegenerate={item.message.id ? () => regenerateResponse(item.message.id!) : undefined}
+                onDelete={item.message.id ? () => deleteMessage(item.message.id!) : undefined}
+                onEdit={item.message.id ? (newContent) => useChatStore.getState().editMessage(item.message.id!, newContent) : undefined}
+                onRestore={item.message.id ? () => useChatStore.getState().restoreMessage(item.message.id!) : undefined}
+                isStreaming={isStreaming}
+              />
+            </div>
+          )}
+          components={{
+            Footer: () => (
+              <div className="max-w-4xl mx-auto px-6 pb-32">
+                {!!currentSessionId && awaitingSessionId === currentSessionId && <TypingBubble />}
+              </div>
+            )
+          }}
+        />
       </div>
 
       {/* Conversation Navigation Links */}
@@ -242,16 +246,15 @@ export default function ChatWindow() {
         ))}
       </div>
 
-      {/* floating scroll-to-bottom button; positioned above the InputBar */}
+      {/* floating scroll-to-bottom button */}
       {showScrollButton && (
         <button
           aria-label="Scroll to bottom"
           onClick={() => {
-            if (bottomRef.current) {
-              bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
-            } else if (containerRef.current) {
-              containerRef.current.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" });
-            }
+            virtuosoRef.current?.scrollToIndex({
+              index: thread.length - 1,
+              behavior: 'smooth'
+            });
           }}
           className="fixed right-6 z-50 bottom-24 bg-white border border-gray-200 shadow-lg p-2 rounded-full hover:scale-105 transition-transform"
         >

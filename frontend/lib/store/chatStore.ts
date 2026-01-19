@@ -74,6 +74,11 @@ type ChatStore = {
   // responses are ignored.
   activeRequestId: string | null;
 
+  // Session switching (message load) control to avoid stale updates + speed up switching
+  loadingSessionId: string | null;
+  sessionLoadRequestId: string | null;
+  sessionLoadAbortController: AbortController | null;
+
   // Reset UI/chat to default view (no active session, empty messages)
   resetToDefault: () => void;
   stopGeneration: () => void;
@@ -114,6 +119,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   isStreaming: false,
   abortController: null,
   activeRequestId: null,
+
+  loadingSessionId: null,
+  sessionLoadRequestId: null,
+  sessionLoadAbortController: null,
 
   /* ----------------------------------------------------------------
      LOAD EXISTING SESSIONS FROM SERVER
@@ -215,19 +224,48 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     SELECT SESSION & LOAD ITS MESSAGES
  ---------------------------------------------------------------- */
   selectSession: async (id: string) => {
-    // Optimistic update: set currentSessionId immediately to improve perceived latency
-    // and prevent race conditions with UI elements like dropdowns.
+    // Abort any in-flight session message load to prevent "late" updates
+    const prev = get().sessionLoadAbortController;
+    if (prev) prev.abort();
+
+    const requestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const controller = new AbortController();
+
+    // Show cached messages immediately if we already loaded this session once
+    const cached = get().sessions.find((s) => s.id === id)?.messages;
+
     set({
       currentSessionId: id,
       pendingSession: false,
       awaitingSessionId: null,
+      loadingSessionId: id,
+      sessionLoadRequestId: requestId,
+      sessionLoadAbortController: controller,
+      messages: Array.isArray(cached) && cached.length ? cached : [],
     });
 
-    const messages = await api.get(`/api/sessions/${id}/messages`);
+    try {
+      // api.get might not support {signal}; if it doesn't, the requestId guards still prevent stale state updates.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const messages: any = await api.get(`/api/sessions/${id}/messages`, { signal: controller.signal });
 
-    // Ensure we only update messages if the session is still selected
-    if (get().currentSessionId === id) {
-      set({ messages });
+      const state = get();
+      if (state.currentSessionId !== id) return;
+      if (state.sessionLoadRequestId !== requestId) return;
+
+      set((s) => ({
+        messages,
+        loadingSessionId: null,
+        sessionLoadAbortController: null,
+        sessions: s.sessions.map((sess) => (sess.id === id ? { ...sess, messages } : sess)),
+      }));
+    } catch (err: any) {
+      if (err?.name === "AbortError") return;
+
+      const state = get();
+      if (state.currentSessionId === id && state.sessionLoadRequestId === requestId) {
+        set({ loadingSessionId: null, sessionLoadAbortController: null });
+      }
     }
   },
 

@@ -9,7 +9,7 @@ interface ProjectActionsDropdownProps {
     onClose: () => void;
     onRename: (id: string) => void;
     onDelete: (id: string) => void;
-    position: { top: number; right: number; above?: boolean };
+    position: { top: number; right?: number; left?: number; above?: boolean };
 }
 
 export default function ProjectActionsDropdown({
@@ -37,7 +37,8 @@ export default function ProjectActionsDropdown({
             className="fixed z-50 min-w-[140px] bg-white rounded-lg shadow-lg border border-gray-200 py-1"
             style={{
                 top: `${position.top}px`,
-                right: `${position.right}px`,
+                right: position.right !== undefined ? `${position.right}px` : undefined,
+                left: position.left !== undefined ? `${position.left}px` : undefined,
                 bottom: position.above ? 'auto' : undefined,
             }}
         >

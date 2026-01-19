@@ -215,14 +215,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     SELECT SESSION & LOAD ITS MESSAGES
  ---------------------------------------------------------------- */
   selectSession: async (id: string) => {
-    const messages = await api.get(`/api/sessions/${id}/messages`);
-
+    // Optimistic update: set currentSessionId immediately to improve perceived latency
+    // and prevent race conditions with UI elements like dropdowns.
     set({
       currentSessionId: id,
-      messages,
       pendingSession: false,
-      awaitingSessionId: null, // Clear loading state when switching sessions
+      awaitingSessionId: null,
     });
+
+    const messages = await api.get(`/api/sessions/${id}/messages`);
+
+    // Ensure we only update messages if the session is still selected
+    if (get().currentSessionId === id) {
+      set({ messages });
+    }
   },
 
   selectProject: (id: string | null) => {

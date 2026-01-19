@@ -1,16 +1,38 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import Sidebar from '../components/layout/Sidebar';
-import ChatWindow from '../components/chat/ChatWindow';
-import InputBar from '../components/chat/InputBar';
-import SessionHeader from 'components/chat/SessionHeader';
+import Sidebar from '@/components/layout/Sidebar';
+import ChatWindow from '@/components/chat/ChatWindow';
+import InputBar from '@/components/chat/InputBar';
+import SessionHeader from '@/components/chat/SessionHeader';
 import { useAuth } from '@/lib/hooks/useAuth';
+import { useUIStore } from '@/lib/store/uiStore';
+import { useChatStore } from '@/lib/store/chatStore';
+
+// Modals
+import RenameSessionModal from '@/components/chat/RenameSessionModal';
+import DeleteSessionModal from '@/components/chat/DeleteSessionModal';
+import AddToProjectModal from '@/components/chat/AddToProjectModal';
+import RenameProjectModal from '@/components/chat/RenameProjectModal';
+import DeleteProjectModal from '@/components/chat/DeleteProjectModal';
 
 // app/page.tsx
 export default function HomePage() {
   const { isAuthenticated, loading } = useAuth();
   const router = useRouter();
+
+  const {
+    renameSessionModal, closeRenameSession,
+    deleteSessionModal, closeDeleteSession,
+    addToProjectModal, closeAddToProject,
+    renameProjectModal, closeRenameProject,
+    deleteProjectModal, closeDeleteProject
+  } = useUIStore();
+
+  const {
+    renameSession, deleteSession, assignSessionToProject,
+    renameProject, deleteProject, projects
+  } = useChatStore();
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -32,23 +54,80 @@ export default function HomePage() {
 
   // If not authenticated, don't render content (will redirect)
   if (!isAuthenticated) {
+    //router.push('/login');
     return null;
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden">
+    <>
+      <div className="flex h-screen w-screen overflow-hidden">
+        {/* LEFT COLUMN — SIDEBAR */}
+        <Sidebar />
+        <SessionHeader />
 
-      {/* LEFT COLUMN — SIDEBAR */}
-      <Sidebar />
-      <SessionHeader />
-
-      {/* RIGHT COLUMN — CHAT WINDOW + INPUT */}
-      <div className="flex flex-col flex-1 bg-white">
-        <ChatWindow />
-        <InputBar />
+        {/* RIGHT COLUMN — CHAT WINDOW + INPUT */}
+        <div className="flex flex-col flex-1 bg-white">
+          <ChatWindow />
+          <InputBar />
+        </div>
       </div>
 
-    </div>
+      {/* GLOBAL MODALS */}
+      {renameSessionModal.isOpen && (
+        <RenameSessionModal
+          currentTitle={renameSessionModal.title}
+          onClose={closeRenameSession}
+          onConfirm={(newTitle) => {
+            renameSession(renameSessionModal.sessionId, newTitle);
+            closeRenameSession();
+          }}
+        />
+      )}
+
+      {deleteSessionModal.isOpen && (
+        <DeleteSessionModal
+          sessionTitle={deleteSessionModal.title}
+          onClose={closeDeleteSession}
+          onConfirm={() => {
+            deleteSession(deleteSessionModal.sessionId);
+            closeDeleteSession();
+          }}
+        />
+      )}
+
+      {addToProjectModal.isOpen && (
+        <AddToProjectModal
+          projects={projects}
+          currentProjectId={addToProjectModal.currentProjectId}
+          onClose={closeAddToProject}
+          onConfirm={(projectId) => {
+            assignSessionToProject(addToProjectModal.sessionId, projectId);
+            closeAddToProject();
+          }}
+        />
+      )}
+
+      {renameProjectModal.isOpen && (
+        <RenameProjectModal
+          currentName={renameProjectModal.name}
+          onClose={closeRenameProject}
+          onConfirm={(newName) => {
+            renameProject(renameProjectModal.projectId, newName);
+            closeRenameProject();
+          }}
+        />
+      )}
+
+      {deleteProjectModal.isOpen && (
+        <DeleteProjectModal
+          projectName={deleteProjectModal.name}
+          onClose={closeDeleteProject}
+          onConfirm={() => {
+            deleteProject(deleteProjectModal.projectId);
+            closeDeleteProject();
+          }}
+        />
+      )}
+    </>
   );
 }
-

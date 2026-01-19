@@ -1,5 +1,4 @@
 // components/chat/SessionActionsDropdown.tsx
-// components/chat/SessionActionsDropdown.tsx
 import { useEffect, useRef } from "react";
 import {
   PencilIcon,
@@ -21,7 +20,8 @@ interface SessionActionsDropdownProps {
   onRemoveFromProject?: (id: string) => void;
   isPinned: boolean;
   isInProject?: boolean;
-  position: { top: number; right: number; above?: boolean };
+  position: { top: number; right?: number; left?: number; above?: boolean };
+  anchorToParent?: boolean;
 }
 
 export default function SessionActionsDropdown({
@@ -36,6 +36,7 @@ export default function SessionActionsDropdown({
   isPinned,
   isInProject,
   position,
+  anchorToParent = false,
 }: SessionActionsDropdownProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -49,15 +50,36 @@ export default function SessionActionsDropdown({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [onClose]);
 
+  const baseClass = anchorToParent
+    ? "absolute z-50 min-w-[140px] bg-white rounded-lg shadow-lg border border-gray-200 py-1"
+    : "fixed z-50 min-w-[115px] bg-white rounded-lg shadow-lg border border-gray-200 py-1";
+
+  const style = anchorToParent
+    ? position.above
+      // Place above the anchor element
+      ? {
+          bottom: "100%",
+          right: 0,
+          marginBottom: "4px",
+        }
+      // Default: place below the anchor element
+      : {
+          top: "100%",
+          right: 0,
+          marginTop: "4px",
+        }
+    : {
+        top: `${position.top}px`,
+        right: position.right !== undefined ? `${position.right}px` : undefined,
+        left: position.left !== undefined ? `${position.left}px` : undefined,
+        bottom: position.above ? "auto" : undefined,
+      };
+
   return (
     <div
       ref={dropdownRef}
-      className="fixed z-50 min-w-[115px] bg-white rounded-lg shadow-lg border border-gray-200 py-1"
-      style={{
-        top: `${position.top}px`,
-        right: `${position.right}px`,
-        bottom: position.above ? 'auto' : undefined,
-      }}
+      className={baseClass}
+      style={style}
     >
       <button
         onClick={() => {

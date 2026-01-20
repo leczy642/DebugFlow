@@ -35,6 +35,7 @@ import { logger } from './utils/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import authenticateToken from './middleware/auth.js';
+import cookieParser from 'cookie-parser';
 
 // setting up Routers
 import ingestRouter from './routes/ingest.js';
@@ -56,6 +57,7 @@ export const app = express();
 // Global middleware
 app.use(cors({ origin: true }));               // Enable CORS
 app.use(express.json({ limit: '10mb' }));      // Parse JSON bodies
+app.use(cookieParser());                       // Parse cookies
 app.use(requestLogger(logger));             // Optional request logging
 
 // Health check

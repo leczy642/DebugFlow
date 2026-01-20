@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Cookies from 'js-cookie';
 import { FaGoogle, FaGithub, FaEnvelope } from "react-icons/fa";
 import { Button } from "../ui/Button";
 import { signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
@@ -23,6 +24,11 @@ export default function LoginPage() {
             if (user) {
                 const idToken = await user.getIdToken();
                 console.log('Sending Google token to backend...');
+
+                // Store token in cookie for 7 days
+                Cookies.set('debugflow_token', idToken, { expires: 7 });
+                localStorage.setItem('debugflow_token', idToken); // Keep local storage for existing logic if any
+
                 await api.get('/protected');
                 console.log('Backend verified token.');
                 // Redirect to home page after successful authentication
@@ -42,6 +48,11 @@ export default function LoginPage() {
             if (user) {
                 const idToken = await user.getIdToken();
                 console.log('Sending GitHub token to backend...');
+
+                // Store token in cookie for 7 days
+                Cookies.set('debugflow_token', idToken, { expires: 7 });
+                localStorage.setItem('debugflow_token', idToken);
+
                 await api.get('/protected');
                 console.log('Backend verified token.');
                 // Redirect to home page after successful authentication
@@ -107,6 +118,11 @@ export default function LoginPage() {
 
                             // Proceed with backend sync
                             const idToken = await user.getIdToken();
+
+                            // Store token in cookie for 7 days
+                            Cookies.set('debugflow_token', idToken, { expires: 7 });
+                            localStorage.setItem('debugflow_token', idToken);
+
                             await api.get('/protected');
                             router.push('/');
                         }
@@ -125,10 +141,12 @@ export default function LoginPage() {
 
     const handleSignOut = async () => {
         try {
+            Cookies.remove('debugflow_token');
             localStorage.removeItem('debugflow_token');
             await firebaseSignOut(auth);
             setToken(null);
-            console.log("You have been successfully logged out")
+            console.log("You have been successfully logged out");
+            router.push('/login');
         }
         catch (error) {
             console.error('Sign-out failed:', error);

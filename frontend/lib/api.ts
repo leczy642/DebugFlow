@@ -35,6 +35,13 @@ export const api = {
 
         const response = await fetch(`${BASE_URL}${endpoint}`, config);
 
+        if (response.status === 401) {
+            // Redirect to login if unauthorized (token expired or missing)
+            if (typeof window !== 'undefined') {
+                window.location.href = '/login';
+            }
+        }
+
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.error || response.statusText);

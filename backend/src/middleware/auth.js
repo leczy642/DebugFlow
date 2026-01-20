@@ -31,16 +31,19 @@ async function authenticateToken(req, res, next) {
   //1. Get the authorization header - tell the server that we are using Bearer token
   //it should look like this Bearer <token>
   const authHeader = req.headers['authorization'];
+  let idToken = null;
 
-  //check if the header is present or starts with 'Bearer '
-  //if not return an error 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+  // Check if the header is present or starts with 'Bearer '
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    idToken = authHeader.split(' ')[1];
+  } else if (req.cookies && req.cookies.debugflow_token) {
+    // Check for token in cookie if header is missing
+    idToken = req.cookies.debugflow_token;
   }
 
-  //3. extract the token from the header - Bear xyz123...
-  //we extract xyz123..
-  const idToken = authHeader.split(' ')[1];
+  if (!idToken) {
+    return res.status(401).json({ error: 'Missing or invalid Authorization header or cookie' });
+  }
 
   //console.log(`authHeader: ${authHeader}`);
   //console.log(`idToken: ${idToken}`);

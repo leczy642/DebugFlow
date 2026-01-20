@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowRightOnRectangleIcon, UserCircleIcon } from '@heroicons/react/24/outline';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
+import Cookies from 'js-cookie';
 
 interface SettingsPopupProps {
     onClose: () => void;
@@ -28,6 +29,7 @@ export default function SettingsPopup({ onClose, position }: SettingsPopupProps)
 
     const handleLogout = async () => {
         try {
+            Cookies.remove('debugflow_token');
             await signOut(auth);
             console.log('User signed out successfully');
             router.push('/login');

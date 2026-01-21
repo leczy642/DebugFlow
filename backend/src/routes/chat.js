@@ -23,6 +23,12 @@ import {
   getSessionWithMessages,
   withTransaction,
 } from "../db/models/postgres_session_queries.js";
+import {
+  buildContextMessages,
+  getSessionInfo,
+  sessionNeedsSummary,
+  generateSessionSummary,
+} from "../services/contextService.js";
 
 const router = express.Router();
 
@@ -149,6 +155,27 @@ router.post("/", async (req, res) => {
     }
 
     /* -----------------------------
+       INJECT PROJECT CONTEXT
+    ----------------------------- */
+    const sessionInfo = await getSessionInfo(sessionId);
+    let contextMessages = [];
+    if (sessionInfo?.project_id) {
+      try {
+        contextMessages = await buildContextMessages(
+          sessionInfo.project_id,
+          sessionId
+        );
+        // Prepend context to history
+        if (contextMessages.length > 0) {
+          history.unshift(...contextMessages);
+          logger.info(`Injected ${contextMessages.length} context messages for session ${sessionId}`);
+        }
+      } catch (err) {
+        logger.warn("Failed to build project context", { error: err instanceof Error ? err.message : err });
+      }
+    }
+
+    /* -----------------------------
        STREAMING RESPONSE
     ----------------------------- */
     /* -----------------------------
@@ -201,6 +228,21 @@ router.post("/", async (req, res) => {
         await withTransaction(async (client) => {
           await addMessage(sessionId, "assistant", fullAiReply, client, userMessageId);
         });
+
+        // Check if we should generate a session summary (async, non-blocking)
+        if (sessionInfo?.project_id) {
+          setImmediate(async () => {
+            try {
+              const needsSummary = await sessionNeedsSummary(sessionId);
+              if (needsSummary) {
+                await generateSessionSummary(sessionId);
+                logger.info(`Generated summary for session ${sessionId}`);
+              }
+            } catch (err) {
+              logger.warn("Summary generation failed", { error: err instanceof Error ? err.message : err });
+            }
+          });
+        }
       }
 
     } catch (streamError) {

@@ -55,6 +55,8 @@ type Session = {
 type Project = {
   id: string;
   name: string;
+  context_instructions?: string;
+  context_enabled?: boolean;  // defaults to true
 };
 
 type ChatStore = {
@@ -89,6 +91,9 @@ type ChatStore = {
   assignSessionToProject: (sessionId: string, projectId: string | null) => Promise<void>;
   renameProject: (id: string, newName: string) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
+  updateProjectContext: (id: string, instructions: string) => Promise<void>;
+  toggleProjectContext: (id: string, enabled: boolean) => Promise<void>;
+  getProjectWithContext: (id: string) => Promise<Project | null>;
 
   startNewSession: (projectId?: string | null) => Promise<void>;
   selectSession: (id: string) => Promise<void>;
@@ -193,6 +198,51 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       await api.patch(`/api/sessions/${sessionId}`, { project_id: projectId });
     } catch {
       set({ sessions: prev });
+    }
+  },
+
+  updateProjectContext: async (id: string, instructions: string) => {
+    const prev = get().projects;
+    set((state) => ({
+      projects: state.projects.map((p) =>
+        p.id === id ? { ...p, context_instructions: instructions } : p
+      )
+    }));
+
+    try {
+      await api.patch(`/api/projects/${id}/context`, { context_instructions: instructions });
+    } catch {
+      set({ projects: prev });
+    }
+  },
+
+  toggleProjectContext: async (id: string, enabled: boolean) => {
+    const prev = get().projects;
+    set((state) => ({
+      projects: state.projects.map((p) =>
+        p.id === id ? { ...p, context_enabled: enabled } : p
+      )
+    }));
+
+    try {
+      await api.patch(`/api/projects/${id}/context-toggle`, { context_enabled: enabled });
+    } catch {
+      set({ projects: prev });
+    }
+  },
+
+  getProjectWithContext: async (id: string) => {
+    try {
+      const project = await api.get(`/api/projects/${id}`);
+      // Update local state with full project data
+      set((state) => ({
+        projects: state.projects.map((p) =>
+          p.id === id ? { ...p, ...project } : p
+        )
+      }));
+      return project;
+    } catch {
+      return null;
     }
   },
 

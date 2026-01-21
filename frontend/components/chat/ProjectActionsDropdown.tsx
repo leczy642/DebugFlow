@@ -1,7 +1,8 @@
 import { useRef, useEffect } from "react";
 import {
     PencilIcon,
-    TrashIcon
+    TrashIcon,
+    Cog6ToothIcon
 } from "@heroicons/react/24/outline";
 
 interface ProjectActionsDropdownProps {
@@ -9,6 +10,7 @@ interface ProjectActionsDropdownProps {
     onClose: () => void;
     onRename: (id: string) => void;
     onDelete: (id: string) => void;
+    onSettings: (id: string) => void;
     position: { top: number; right?: number; left?: number; above?: boolean };
 }
 
@@ -17,6 +19,7 @@ export default function ProjectActionsDropdown({
     onClose,
     onRename,
     onDelete,
+    onSettings,
     position,
 }: ProjectActionsDropdownProps) {
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -51,6 +54,16 @@ export default function ProjectActionsDropdown({
             >
                 <PencilIcon className="h-4 w-4" />
                 Rename Project
+            </button>
+            <button
+                onClick={() => {
+                    onSettings(projectId);
+                    onClose();
+                }}
+                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+            >
+                <Cog6ToothIcon className="h-4 w-4" />
+                Project Settings
             </button>
             <div className="border-t border-gray-100 my-0.5"></div>
             <button

@@ -9,7 +9,10 @@ import {
     createProject,
     getProjects,
     deleteProject,
-    renameProject
+    renameProject,
+    getProjectWithContext,
+    updateProjectContext,
+    setProjectContextEnabled
 } from "../db/models/project_queries.js";
 
 const router = express.Router();
@@ -76,6 +79,66 @@ router.patch("/:id", async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: "Failed to update project" });
+    }
+});
+
+/**
+ * GET /projects/:id
+ * Get a single project with context fields
+ */
+router.get("/:id", async (req, res) => {
+    try {
+        const project = await getProjectWithContext(req.params.id);
+        if (!project) return res.status(404).json({ error: "Project not found" });
+        res.json(project);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Failed to fetch project" });
+    }
+});
+
+/**
+ * PATCH /projects/:id/context
+ * Update project context instructions
+ * Body: { context_instructions }
+ */
+router.patch("/:id/context", async (req, res) => {
+    try {
+        const { context_instructions } = req.body;
+        // Allow empty string to clear instructions
+        if (context_instructions === undefined) {
+            return res.status(400).json({ error: "context_instructions is required" });
+        }
+
+        const updated = await updateProjectContext(req.params.id, context_instructions);
+        if (!updated) return res.status(404).json({ error: "Project not found" });
+
+        res.json(updated);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Failed to update project context" });
+    }
+});
+
+/**
+ * PATCH /projects/:id/context-toggle
+ * Toggle project context on/off
+ * Body: { context_enabled }
+ */
+router.patch("/:id/context-toggle", async (req, res) => {
+    try {
+        const { context_enabled } = req.body;
+        if (typeof context_enabled !== "boolean") {
+            return res.status(400).json({ error: "context_enabled must be a boolean" });
+        }
+
+        const updated = await setProjectContextEnabled(req.params.id, context_enabled);
+        if (!updated) return res.status(404).json({ error: "Project not found" });
+
+        res.json(updated);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Failed to toggle project context" });
     }
 });
 

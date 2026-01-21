@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 import SessionActionsDropdown from "../chat/SessionActionsDropdown";
 import ProjectActionsDropdown from "../chat/ProjectActionsDropdown";
 import NewProjectModal from "../chat/NewProjectModal";
+import ProjectSettingsModal from "../chat/ProjectSettingsModal";
 import SettingsPopup from "./SettingsPopup";
 import { useAuth } from "@/lib/hooks/useAuth";
 
@@ -78,6 +79,7 @@ export default function Sidebar() {
     });
 
     const [newProjectModalOpen, setNewProjectModalOpen] = useState(false);
+    const [projectSettingsModalId, setProjectSettingsModalId] = useState<string | null>(null);
     const [projectsListExpanded, setProjectsListExpanded] = useState(true);
     const [historyListExpanded, setHistoryListExpanded] = useState(true);
 
@@ -174,6 +176,11 @@ export default function Sidebar() {
         if (project) {
             openDeleteProject(projectId, project.name);
         }
+        setDropdownProjectId(null);
+    };
+
+    const handleProjectSettingsTrigger = (projectId: string) => {
+        setProjectSettingsModalId(projectId);
         setDropdownProjectId(null);
     };
 
@@ -458,6 +465,7 @@ export default function Sidebar() {
                     onClose={() => setDropdownProjectId(null)}
                     onRename={handleRenameProjectTrigger}
                     onDelete={handleDeleteProjectTrigger}
+                    onSettings={handleProjectSettingsTrigger}
                 />
             )}
 
@@ -477,6 +485,17 @@ export default function Sidebar() {
                     onClose={() => setSettingsPopupOpen(false)}
                 />
             )}
+
+            {projectSettingsModalId && (() => {
+                const project = projects.find(p => p.id === projectSettingsModalId);
+                return project ? (
+                    <ProjectSettingsModal
+                        projectId={projectSettingsModalId}
+                        projectName={project.name}
+                        onClose={() => setProjectSettingsModalId(null)}
+                    />
+                ) : null;
+            })()}
         </div>
     );
 }

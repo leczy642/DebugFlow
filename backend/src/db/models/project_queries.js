@@ -51,3 +51,38 @@ export async function renameProject(projectId, newName) {
     );
     return rows[0];
 }
+
+/* -----------------------------
+   PROJECT CONTEXT
+----------------------------- */
+
+export async function getProjectWithContext(projectId) {
+    const { rows } = await pool.query(
+        `SELECT id, name, context_instructions, context_enabled, created_at, updated_at
+         FROM projects WHERE id = $1`,
+        [projectId]
+    );
+    return rows[0];
+}
+
+export async function updateProjectContext(projectId, instructions) {
+    const { rows } = await pool.query(
+        `UPDATE projects 
+         SET context_instructions = $2, updated_at = NOW() 
+         WHERE id = $1 
+         RETURNING id, name, context_instructions, context_enabled, updated_at`,
+        [projectId, instructions]
+    );
+    return rows[0];
+}
+
+export async function setProjectContextEnabled(projectId, enabled) {
+    const { rows } = await pool.query(
+        `UPDATE projects 
+         SET context_enabled = $2, updated_at = NOW() 
+         WHERE id = $1 
+         RETURNING id, name, context_instructions, context_enabled, updated_at`,
+        [projectId, enabled]
+    );
+    return rows[0];
+}

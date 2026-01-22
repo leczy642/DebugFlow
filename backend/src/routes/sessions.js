@@ -55,7 +55,8 @@ router.get("/", async (req, res) => {
  */
 router.post("/", async (req, res) => {
   const { uid } = req.user;
-  const session = await createSession(uid);
+  const { project_id } = req.body;
+  const session = await createSession(uid, project_id);
   res.json(session);
 });
 

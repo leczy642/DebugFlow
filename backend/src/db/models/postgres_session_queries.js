@@ -34,16 +34,16 @@ export async function getAllSessions(userId) {
   }
 }
 
-export async function createSession(userId) {
+export async function createSession(userId, projectId = null) {
   const id = uuid();
   const title = "New Debug Session";
 
   try {
     const { rows } = await pool.query(
-      `INSERT INTO sessions (id, title, user_id)
-       VALUES ($1, $2, $3)
-       RETURNING id, title, pinned, created_at, updated_at`,
-      [id, title, userId]
+      `INSERT INTO sessions (id, title, user_id, project_id)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, title, pinned, created_at, updated_at, project_id`,
+      [id, title, userId, projectId]
     );
     return rows[0];
   } catch (err) {
@@ -52,10 +52,10 @@ export async function createSession(userId) {
       await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)`);
 
       const { rows } = await pool.query(
-        `INSERT INTO sessions (id, title, user_id)
-         VALUES ($1, $2, $3)
-         RETURNING id, title, pinned, created_at, updated_at`,
-        [id, title, userId]
+        `INSERT INTO sessions (id, title, user_id, project_id)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, title, pinned, created_at, updated_at, project_id`,
+        [id, title, userId, projectId]
       );
       return rows[0];
     }

@@ -12,8 +12,8 @@ export const logger = winston.createLogger({
     ),
     transports: [
         new winston.transports.Console(),  // logs to stdout (cloud-friendly)
-        // new winston.transports.File({ filename: "logs/error.log", level: "error" }),
-        // new winston.transports.File({ filename: "logs/app.log" }),
+        new winston.transports.File({ filename: "logs/error.log", level: "error" }),
+        new winston.transports.File({ filename: "logs/app.log" }),
     ],
 });
 

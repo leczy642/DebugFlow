@@ -161,9 +161,11 @@ router.post("/", async (req, res) => {
     let contextMessages = [];
     if (sessionInfo?.project_id) {
       try {
+        // Pass current message for relevance-based context retrieval
         contextMessages = await buildContextMessages(
           sessionInfo.project_id,
-          sessionId
+          sessionId,
+          message  // Current query for semantic search
         );
         // Prepend context to history
         if (contextMessages.length > 0) {

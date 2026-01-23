@@ -18,6 +18,7 @@ export async function ensureUsersTableExists() {
         auth_provider VARCHAR(50) DEFAULT 'email',
         is_oauth_user BOOLEAN DEFAULT FALSE,
         oauth_verified BOOLEAN DEFAULT FALSE,
+        global_instructions TEXT,
         created_at TIMESTAMP DEFAULT NOW(),
         last_login TIMESTAMP
       );
@@ -27,7 +28,8 @@ export async function ensureUsersTableExists() {
         const alterQueries = [
             `ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(50) DEFAULT 'email'`,
             `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_oauth_user BOOLEAN DEFAULT FALSE`,
-            `ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_verified BOOLEAN DEFAULT FALSE`
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_verified BOOLEAN DEFAULT FALSE`,
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS global_instructions TEXT`
         ];
 
         for (const query of alterQueries) {

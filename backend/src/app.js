@@ -44,6 +44,7 @@ import chatRouter from './routes/chat.js';
 import sessionsRouter from './routes/sessions.js';
 import messagesRouter from './routes/messages.js';
 import projectsRouter from './routes/projects.js';
+import userRouter from './routes/user.js';
 
 // User queries
 import { getUserById, createUser, updateUserLogin } from './db/models/user_queries.js';
@@ -119,6 +120,7 @@ app.use('/api/chat', authenticateToken, chatRouter);
 app.use("/api/sessions", authenticateToken, sessionsRouter);
 app.use("/api/messages", messagesRouter);
 app.use("/api/projects", authenticateToken, projectsRouter);
+app.use("/api/user", authenticateToken, userRouter);
 
 // Global error handler (must be last)
 app.use(errorHandler(logger));

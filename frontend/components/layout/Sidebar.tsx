@@ -19,6 +19,7 @@ import ProjectActionsDropdown from "../chat/ProjectActionsDropdown";
 import NewProjectModal from "../chat/NewProjectModal";
 import ProjectSettingsModal from "../chat/ProjectSettingsModal";
 import SettingsPopup from "./SettingsPopup";
+import GlobalSettingsModal from "../settings/GlobalSettingsModal";
 import { useAuth } from "@/lib/hooks/useAuth";
 
 export default function Sidebar() {
@@ -89,6 +90,7 @@ export default function Sidebar() {
     };
 
     const [settingsPopupOpen, setSettingsPopupOpen] = useState(false);
+    const [showGlobalSettings, setShowGlobalSettings] = useState(false);
     const [settingsPopupPosition, setSettingsPopupPosition] = useState({ bottom: 0, left: 0 });
 
     const handleMoreOptions = (e: React.MouseEvent, sessionId: string) => {
@@ -483,8 +485,14 @@ export default function Sidebar() {
                 <SettingsPopup
                     position={settingsPopupPosition}
                     onClose={() => setSettingsPopupOpen(false)}
+                    onOpenProfile={() => setShowGlobalSettings(true)}
                 />
             )}
+
+            <GlobalSettingsModal
+                isOpen={showGlobalSettings}
+                onClose={() => setShowGlobalSettings(false)}
+            />
 
             {projectSettingsModalId && (() => {
                 const project = projects.find(p => p.id === projectSettingsModalId);

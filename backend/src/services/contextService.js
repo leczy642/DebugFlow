@@ -7,6 +7,7 @@
  * - Manages token budgets
  * - Relevance filtering using HuggingFace embeddings
  * - Recency limits for stale context
+ * - Integrates Global User Context (The Memory Ledger)
  */
 
 import "../utils/loadEnv.js";
@@ -15,6 +16,7 @@ import { chatWithAI } from "./chatService.js";
 import { InferenceClient } from "@huggingface/inference";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { logger } from "../utils/logger.js";
+import { getEffectiveGlobalContext, proposeCandidate } from "./memoryService.js";
 
 // ====== CONFIGURATION ======
 const PROJECT_CONTEXT_TOKEN_LIMIT = 8000;
@@ -138,6 +140,47 @@ async function retrieveRelevantSummaries(query, projectId, currentSessionId, top
 }
 
 /**
+ * Async specific insight extraction from summary
+ * Feeds the "Memory Ledger" with potential candidates
+ */
+async function extractUserInsights(summary, userId, sessionId) {
+    if (!summary || !userId) return;
+
+    // Prompt LLM to identify user preferences
+    const messages = [
+        {
+            role: "system",
+            content: `Analyze this session summary and extract 1-2 core user preferences or habits if present.
+Examples: "User prefers Tailwind CSS", "User uses pnpm", "User hates 'any' type".
+Ignore specific bug fixes. Focus on long-term patterns.
+Return ONLY the insights as a bulleted list (starting with - ). If none, return "NONE".`
+        },
+        {
+            role: "user",
+            content: summary
+        }
+    ];
+
+    try {
+        const text = await chatWithAI(messages);
+        if (!text || text.includes("NONE")) return;
+
+        const insights = text.split('\n')
+            .filter(line => line.trim().startsWith('-'))
+            .map(line => line.replace(/^-\s*/, '').trim());
+
+        for (const insight of insights) {
+            if (insight.length > 5 && insight.length < 200) {
+                await proposeCandidate(userId, insight, { sourceSessionId: sessionId });
+                logger.info(`Proposed candidate memory for user ${userId}: ${insight}`);
+            }
+        }
+    } catch (err) {
+        logger.warn("Failed to extract insights", { error: err.message });
+    }
+}
+
+/**
  * Generate a summary for a session's conversation
  * Called after sessions reach 5+ messages
  */
@@ -208,6 +251,12 @@ Return ONLY the summary, no preamble or formatting.`
             );
         }
 
+        // Trigger Async Insight Extraction (Global Memory Ledger)
+        if (sessionInfo.user_id) {
+            extractUserInsights(summary, sessionInfo.user_id, sessionId)
+                .catch(e => logger.error("Background insight extraction failed", { error: e.message }));
+        }
+
         return summary;
     } catch (err) {
         console.error("Failed to generate session summary:", err);
@@ -263,15 +312,32 @@ export async function getProjectSessionSummaries(projectId, excludeSessionId = n
  * Uses relevance filtering when available, falls back to recency
  * Returns array of system messages to prepend to conversation
  */
-export async function buildContextMessages(projectId, currentSessionId, currentQuery = null, tokenLimit = PROJECT_CONTEXT_TOKEN_LIMIT) {
-    const project = await getProjectContext(projectId);
-
-    if (!project) {
-        return [];
-    }
-
+export async function buildContextMessages(projectId, currentSessionId, currentQuery = null, userId = null, tokenLimit = PROJECT_CONTEXT_TOKEN_LIMIT) {
     const contextMessages = [];
     let tokensUsed = 0;
+
+    // 0. GLOBAL USER CONTEXT (Tier 1 & 2) - Highest Priority
+    if (userId) {
+        const globalContext = await getEffectiveGlobalContext(userId);
+        if (globalContext) {
+            const globalTokens = estimateTokens(globalContext);
+            // Cap global context contribution to ~2000 tokens to leave room for project
+            const cappedGlobalContext = globalContext.slice(0, 8000);
+
+            contextMessages.push({
+                role: "system",
+                content: cappedGlobalContext
+            });
+            tokensUsed += estimateTokens(cappedGlobalContext);
+        }
+    }
+
+    const project = await getProjectContext(projectId);
+
+    // If project context disabled, stop here (but we kept Global enabled)
+    if (!project) {
+        return contextMessages;
+    }
 
     // 1. Add project instructions if present (always included)
     if (project.context_instructions) {
@@ -396,7 +462,7 @@ export async function sessionNeedsSummary(sessionId) {
  */
 export async function getSessionInfo(sessionId) {
     const { rows: [session] } = await pool.query(
-        `SELECT id, title, project_id FROM sessions WHERE id = $1`,
+        `SELECT id, title, project_id, user_id FROM sessions WHERE id = $1`,
         [sessionId]
     );
     return session;

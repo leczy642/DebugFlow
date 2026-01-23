@@ -155,17 +155,51 @@ router.post("/", async (req, res) => {
     }
 
     /* -----------------------------
-       INJECT PROJECT CONTEXT
+       COMMAND PARSING (EXPLICIT MEMORY)
+    ----------------------------- */
+    // Simple regex to catch "Remember: ..." or "Remember that ..."
+    // This allows immediate feedback loop for the user
+    if (message.match(/^(?:remember|save)\s+(?:this|that)?(?::\s*)?(.*?)$/i)) {
+      try {
+        const match = message.match(/^(?:remember|save)\s+(?:this|that)?(?::\s*)?(.*?)$/i);
+        if (match && match[1] && match[1].length > 3) {
+          const memoryContent = match[1].trim();
+          const { addExplicitMemory } = await import("../services/memoryService.js");
+          await addExplicitMemory(firebaseUid, memoryContent);
+
+          // Inject acknowledgment into history so AI reacts to it
+          // We push it to history array later, but let's signal it here
+          history.push({
+            role: "system",
+            content: `[SYSTEM] User explicitly asked to remember: "${memoryContent}". Confirm to the user that this has been saved to their Global Context.`
+          });
+          logger.info(`Processed explicit memory command for user ${firebaseUid}`);
+        }
+      } catch (err) {
+        logger.warn("Failed to process explicit memory command", { error: err.message });
+      }
+    }
+
+    /* -----------------------------
+       INJECT PROJECT & GLOBAL CONTEXT
     ----------------------------- */
     const sessionInfo = await getSessionInfo(sessionId);
     let contextMessages = [];
-    if (sessionInfo?.project_id) {
+    // Always attempt to build context if we have project OR user info (for Global Context)
+    // Even if no project (e.g. global chat), we might want Global Context
+    const projectId = sessionInfo?.project_id || null;
+
+    // We modify contextService to handle null projectId if we want Only Global context in future
+    // For now, existing logic requires project_id for Project Context, but we passed userId for Global.
+    // Let's pass what we have.
+    if (projectId || firebaseUid) {
       try {
         // Pass current message for relevance-based context retrieval
         contextMessages = await buildContextMessages(
-          sessionInfo.project_id,
+          projectId, // might be null
           sessionId,
-          message  // Current query for semantic search
+          message,   // Current query
+          firebaseUid // Global User ID
         );
         // Prepend context to history
         if (contextMessages.length > 0) {
@@ -173,7 +207,7 @@ router.post("/", async (req, res) => {
           logger.info(`Injected ${contextMessages.length} context messages for session ${sessionId}`);
         }
       } catch (err) {
-        logger.warn("Failed to build project context", { error: err instanceof Error ? err.message : err });
+        logger.warn("Failed to build context", { error: err instanceof Error ? err.message : err });
       }
     }
 

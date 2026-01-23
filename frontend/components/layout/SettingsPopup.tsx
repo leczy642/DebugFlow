@@ -8,10 +8,11 @@ import Cookies from 'js-cookie';
 
 interface SettingsPopupProps {
     onClose: () => void;
+    onOpenProfile: () => void;
     position: { bottom: number; left: number };
 }
 
-export default function SettingsPopup({ onClose, position }: SettingsPopupProps) {
+export default function SettingsPopup({ onClose, onOpenProfile, position }: SettingsPopupProps) {
     const popupRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
 
@@ -40,8 +41,11 @@ export default function SettingsPopup({ onClose, position }: SettingsPopupProps)
     };
 
     const handleProfile = () => {
-        // Placeholder for profile functionality
-        console.log('Profile clicked');
+        onOpenProfile();
+        // onClose will be handled by parent if desired, or we call it here? 
+        // Typically parent handles closing popup when opening modal
+        // But the previous logic called onClose().
+        // Let's defer to parent logic, or just call onClose() here too.
         onClose();
     };
 

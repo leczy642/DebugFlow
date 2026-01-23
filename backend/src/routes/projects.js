@@ -142,4 +142,25 @@ router.patch("/:id/context-toggle", async (req, res) => {
     }
 });
 
+/**
+ * GET /projects/:id/summaries
+ * Get all session summaries for a project
+ */
+router.get("/:id/summaries", async (req, res) => {
+    try {
+        const { pool } = await import("../db/postgres_connect.js");
+        const { rows } = await pool.query(
+            `SELECT id, title, context_summary, summary_updated_at 
+             FROM sessions 
+             WHERE project_id = $1 AND context_summary IS NOT NULL
+             ORDER BY summary_updated_at DESC`,
+            [req.params.id]
+        );
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Failed to fetch project summaries" });
+    }
+});
+
 export default router;

@@ -140,29 +140,43 @@ async function retrieveRelevantSummaries(query, projectId, currentSessionId, top
 }
 
 /**
- * Async specific insight extraction from summary
+ * Async specific insight extraction from conversation
  * Feeds the "Memory Ledger" with potential candidates
  */
-async function extractUserInsights(summary, userId, sessionId) {
-    if (!summary || !userId) return;
+async function extractUserInsights(messages, userId, sessionId) {
+    if (!messages || messages.length === 0 || !userId) return;
+
+    // Filter to last 15 messages for signal vs noise balance
+    const signalMessages = messages.slice(-15);
+    const conversationText = signalMessages
+        .map(m => `${m.role.toUpperCase()}: ${m.content}`)
+        .join('\n\n');
 
     // Prompt LLM to identify user preferences
-    const messages = [
+    const extractionMessages = [
         {
             role: "system",
-            content: `Analyze this session summary and extract 1-2 core user preferences or habits if present.
-Examples: "User prefers Tailwind CSS", "User uses pnpm", "User hates 'any' type".
-Ignore specific bug fixes. Focus on long-term patterns.
-Return ONLY the insights as a bulleted list (starting with - ). If none, return "NONE".`
+            content: `Analyze the provided conversation history and extract core user preferences, technical choices, or recurring habits.
+Focus on:
+- Programming languages or frameworks mentioned as "preferred" or "hated".
+- Specific library choices (e.g., "User uses Tailwind CSS", "User prefers pnpm").
+- Coding style preferences (e.g., "User prefers functional programming", "User dislikes 'any' type").
+- Personal context (e.g., "User is a senior engineer").
+
+IGNORE:
+- Specific bug descriptions or one-off fixes.
+- Temporary environment issues.
+
+Return ONLY the insights as a bulleted list (starting with - ). Return "NONE" if no clear long-term patterns are found.`
         },
         {
             role: "user",
-            content: summary
+            content: conversationText
         }
     ];
 
     try {
-        const text = await chatWithAI(messages);
+        const text = await chatWithAI(extractionMessages);
         if (!text || text.includes("NONE")) return;
 
         const insights = text.split('\n')
@@ -172,7 +186,6 @@ Return ONLY the insights as a bulleted list (starting with - ). If none, return 
         for (const insight of insights) {
             if (insight.length > 5 && insight.length < 200) {
                 await proposeCandidate(userId, insight, { sourceSessionId: sessionId });
-                logger.info(`Proposed candidate memory for user ${userId}: ${insight}`);
             }
         }
     } catch (err) {
@@ -253,7 +266,7 @@ Return ONLY the summary, no preamble or formatting.`
 
         // Trigger Async Insight Extraction (Global Memory Ledger)
         if (sessionInfo.user_id) {
-            extractUserInsights(summary, sessionInfo.user_id, sessionId)
+            extractUserInsights(messages, sessionInfo.user_id, sessionId)
                 .catch(e => logger.error("Background insight extraction failed", { error: e.message }));
         }
 

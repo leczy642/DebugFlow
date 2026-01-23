@@ -168,4 +168,52 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+/**
+ * DELETE /sessions/:id/summary
+ * Clear a session's context summary (removes from project memory)
+ */
+router.delete("/:id/summary", async (req, res) => {
+  try {
+    const { deleteSessionSummary } = await import("../db/models/postgres_session_queries.js");
+    const { deleteSummaryEmbedding } = await import("../services/contextService.js");
+
+    await deleteSessionSummary(req.params.id);
+    await deleteSummaryEmbedding(req.params.id).catch(e => console.error("Pinecone delete failed", e));
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete session summary" });
+  }
+});
+
+/**
+ * POST /sessions/:id/promote
+ * Promote a session summary to the Global Memory Ledger
+ */
+router.post("/:id/promote", async (req, res) => {
+  try {
+    const { pool } = await import("../db/postgres_connect.js");
+    const { addExplicitMemory } = await import("../services/memoryService.js");
+
+    // 1. Get the summary
+    const { rows: [session] } = await pool.query(
+      `SELECT context_summary FROM sessions WHERE id = $1`,
+      [req.params.id]
+    );
+
+    if (!session || !session.context_summary) {
+      return res.status(400).json({ error: "No summary found to promote" });
+    }
+
+    // 2. Add to global brain as EXPLICIT active memory
+    const memory = await addExplicitMemory(req.user.uid, session.context_summary);
+
+    res.json({ success: true, memory });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to promote summary" });
+  }
+});
+
 export default router;

@@ -1,13 +1,21 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { XMarkIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon, InformationCircleIcon, TrashIcon, ArrowUpCircleIcon, CheckIcon } from "@heroicons/react/24/outline";
 import { useChatStore } from "@/lib/store/chatStore";
+import { api } from "@/lib/api";
 
 interface ProjectSettingsModalProps {
     projectId: string;
     projectName: string;
     onClose: () => void;
+}
+
+interface ProjectSummary {
+    id: string;
+    title: string;
+    context_summary: string;
+    summary_updated_at: string;
 }
 
 export default function ProjectSettingsModal({
@@ -22,22 +30,33 @@ export default function ProjectSettingsModal({
     const [contextEnabled, setContextEnabled] = useState(true);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    const [summaries, setSummaries] = useState<ProjectSummary[]>([]);
+    const [promotedIds, setPromotedIds] = useState<Set<string>>(new Set());
 
     // Get current project from store
     const project = projects.find((p) => p.id === projectId);
 
     useEffect(() => {
         // Load full project data with context fields
-        const loadProject = async () => {
+        const loadProjectData = async () => {
             setIsLoading(true);
-            const fullProject = await getProjectWithContext(projectId);
-            if (fullProject) {
-                setInstructions(fullProject.context_instructions || "");
-                setContextEnabled(fullProject.context_enabled !== false); // default true
+            try {
+                const fullProject = await getProjectWithContext(projectId);
+                if (fullProject) {
+                    setInstructions(fullProject.context_instructions || "");
+                    setContextEnabled(fullProject.context_enabled !== false);
+                }
+
+                // Fetch summaries
+                const summaryList = await api.get(`/api/projects/${projectId}/summaries`);
+                setSummaries(summaryList);
+            } catch (err) {
+                console.error("Failed to load project data:", err);
+            } finally {
+                setIsLoading(false);
             }
-            setIsLoading(false);
         };
-        loadProject();
+        loadProjectData();
     }, [projectId, getProjectWithContext]);
 
     const handleSave = async () => {
@@ -59,13 +78,31 @@ export default function ProjectSettingsModal({
         }
     };
 
+    const handleDeleteSummary = async (sessionId: string) => {
+        try {
+            await api.delete(`/api/sessions/${sessionId}/summary`);
+            setSummaries(summaries.filter(s => s.id !== sessionId));
+        } catch (err) {
+            console.error("Failed to delete summary:", err);
+        }
+    };
+
+    const handlePromoteSummary = async (sessionId: string) => {
+        try {
+            await api.post(`/api/sessions/${sessionId}/promote`, {});
+            setPromotedIds(prev => new Set(prev).add(sessionId));
+        } catch (err) {
+            console.error("Failed to promote summary:", err);
+        }
+    };
+
     const handleToggle = () => {
         setContextEnabled(!contextEnabled);
     };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl w-full max-w-md shadow-xl p-6 transform transition-all scale-100 animate-in fade-in zoom-in duration-200">
+            <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl p-6 transform transition-all scale-100 animate-in fade-in zoom-in duration-200">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="text-xl font-semibold text-gray-900">
@@ -84,7 +121,7 @@ export default function ProjectSettingsModal({
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     </div>
                 ) : (
-                    <>
+                    <div className="max-h-[70vh] overflow-y-auto pr-2">
                         {/* Project Name (read-only) */}
                         <div className="mb-4">
                             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -151,8 +188,7 @@ export default function ProjectSettingsModal({
                             />
                             <div className="flex justify-between mt-1">
                                 <p className="text-xs text-gray-400">
-                                    These instructions are included in every chat within this
-                                    project
+                                    These instructions are included in every chat within this project
                                 </p>
                                 <span className="text-xs text-gray-400">
                                     {instructions.length}/2000
@@ -160,17 +196,71 @@ export default function ProjectSettingsModal({
                             </div>
                         </div>
 
-                        {/* Auto-summary Info */}
-                        <div className="mb-6 p-3 bg-blue-50 rounded-lg">
-                            <p className="text-xs text-blue-700">
-                                <strong>Auto-summaries:</strong> When context is enabled, sessions
-                                are automatically summarized after 5+ messages. These summaries
-                                help the AI understand context from related conversations.
-                            </p>
-                        </div>
+                        {/* Project Memory Section */}
+                        {contextEnabled && (
+                            <div className="mb-6 border-t pt-6">
+                                <h4 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                                    Project Memory (Session Summaries)
+                                    {summaries.length > 0 && (
+                                        <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                                            {summaries.length}
+                                        </span>
+                                    )}
+                                </h4>
+
+                                {summaries.length > 0 ? (
+                                    <div className="space-y-4">
+                                        {summaries.map(summary => (
+                                            <div key={summary.id} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <span className="text-xs font-medium text-gray-500 truncate max-w-[70%]">
+                                                        Session: {summary.title}
+                                                    </span>
+                                                    <div className="flex gap-1">
+                                                        <button
+                                                            onClick={() => handlePromoteSummary(summary.id)}
+                                                            disabled={promotedIds.has(summary.id)}
+                                                            title="Promote to Global Brain"
+                                                            className={`p-1 rounded-md transition-colors ${promotedIds.has(summary.id)
+                                                                ? "text-green-600 bg-green-50"
+                                                                : "text-blue-600 hover:bg-blue-100"
+                                                                }`}
+                                                        >
+                                                            {promotedIds.has(summary.id) ? (
+                                                                <CheckIcon className="w-4 h-4" />
+                                                            ) : (
+                                                                <ArrowUpCircleIcon className="w-4 h-4" />
+                                                            )}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeleteSummary(summary.id)}
+                                                            title="Delete from Project Memory"
+                                                            className="p-1 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                                                        >
+                                                            <TrashIcon className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <p className="text-xs text-gray-700 leading-relaxed italic">
+                                                    "{summary.context_summary}"
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-6 px-4 border-2 border-dashed border-gray-200 rounded-xl">
+                                        <InformationCircleIcon className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                                        <p className="text-sm text-gray-500 font-medium">No project memory insights yet.</p>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            Summaries are automatically generated after sessions reach 5+ messages.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Actions */}
-                        <div className="flex gap-3 justify-end">
+                        <div className="flex gap-3 justify-end mt-4 sticky bottom-0 bg-white pt-4 border-t">
                             <button
                                 type="button"
                                 onClick={onClose}
@@ -186,9 +276,10 @@ export default function ProjectSettingsModal({
                                 {isSaving ? "Saving..." : "Save Settings"}
                             </button>
                         </div>
-                    </>
+                    </div>
                 )}
             </div>
         </div>
     );
 }
+

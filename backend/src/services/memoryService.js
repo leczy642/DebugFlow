@@ -54,16 +54,25 @@ export async function addExplicitMemory(userId, text, type = MemoryType.EXPLICIT
  * Starts as CANDIDATE with low score.
  */
 export async function proposeCandidate(userId, text, metadata = {}) {
-    // Check if duplicate already exists
+    const normalizedText = text.toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "");
+
+    // Check for similar existing memories (Active or Candidate)
     const { rows: existing } = await pool.query(
-        `SELECT id, confidence, status FROM user_context 
-         WHERE user_id = $1 AND content = $2`,
-        [userId, text]
+        `SELECT id, content, confidence, status FROM user_context 
+         WHERE user_id = $1 AND status != $2`,
+        [userId, MemoryStatus.ARCHIVED]
     );
 
-    if (existing.length > 0) {
-        // Reinforce existing instead of duplicating
-        return reinforceMemory(existing[0].id);
+    const similar = existing.find(m => {
+        const existingNormalized = m.content.toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "");
+        return existingNormalized === normalizedText ||
+            existingNormalized.includes(normalizedText) ||
+            normalizedText.includes(existingNormalized);
+    });
+
+    if (similar) {
+        logger.info(`Reinforcing similar memory for user ${userId}: "${similar.content}" vs new "${text}"`);
+        return reinforceMemory(similar.id);
     }
 
     try {
@@ -74,6 +83,7 @@ export async function proposeCandidate(userId, text, metadata = {}) {
              RETURNING id, content, status, confidence`,
             [userId, text, MemoryType.INFERRED, MemoryStatus.CANDIDATE, INFERENCE_START_SCORE, metadata]
         );
+        logger.info(`Proposed new candidate memory for user ${userId}: ${text}`);
         return rows[0];
     } catch (err) {
         logger.error("Failed to propose candidate", { error: err.message });

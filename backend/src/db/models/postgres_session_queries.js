@@ -174,6 +174,17 @@ export async function deleteSessionById(sessionId) {
   return rows[0];
 }
 
+export async function deleteSessionSummary(sessionId) {
+  const { rows } = await pool.query(
+    `UPDATE sessions 
+     SET context_summary = NULL, summary_updated_at = NULL 
+     WHERE id = $1 
+     RETURNING id`,
+    [sessionId]
+  );
+  return rows[0];
+}
+
 /* -----------------------------
    MESSAGES
 ----------------------------- */

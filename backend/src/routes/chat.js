@@ -266,16 +266,15 @@ router.post("/", async (req, res) => {
         });
 
         // Check if we should generate a session summary (async, non-blocking)
-        if (sessionInfo?.project_id) {
+        if (sessionInfo?.user_id) {
           setImmediate(async () => {
             try {
               const needsSummary = await sessionNeedsSummary(sessionId);
               if (needsSummary) {
                 await generateSessionSummary(sessionId);
-                logger.info(`Generated summary for session ${sessionId}`);
               }
             } catch (err) {
-              logger.warn("Summary generation failed", { error: err instanceof Error ? err.message : err });
+              logger.warn("Summary/Memory extraction failed", { error: err instanceof Error ? err.message : err });
             }
           });
         }

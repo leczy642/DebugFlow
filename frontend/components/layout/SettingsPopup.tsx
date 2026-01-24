@@ -1,18 +1,18 @@
 "use client";
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRightOnRectangleIcon, UserCircleIcon } from '@heroicons/react/24/outline';
+import { ArrowRightOnRectangleIcon, UserCircleIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import Cookies from 'js-cookie';
 
 interface SettingsPopupProps {
     onClose: () => void;
-    onOpenProfile: () => void;
+    onOpenSettings: (section: 'profile' | 'memory') => void;
     position: { bottom: number; left: number };
 }
 
-export default function SettingsPopup({ onClose, onOpenProfile, position }: SettingsPopupProps) {
+export default function SettingsPopup({ onClose, onOpenSettings, position }: SettingsPopupProps) {
     const popupRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
 
@@ -41,11 +41,12 @@ export default function SettingsPopup({ onClose, onOpenProfile, position }: Sett
     };
 
     const handleProfile = () => {
-        onOpenProfile();
-        // onClose will be handled by parent if desired, or we call it here? 
-        // Typically parent handles closing popup when opening modal
-        // But the previous logic called onClose().
-        // Let's defer to parent logic, or just call onClose() here too.
+        onOpenSettings('profile');
+        onClose();
+    };
+
+    const handleMemory = () => {
+        onOpenSettings('memory');
         onClose();
     };
 
@@ -59,6 +60,15 @@ export default function SettingsPopup({ onClose, onOpenProfile, position }: Sett
             }}
         >
             <div className="py-2">
+                {/* Memory Option */}
+                <button
+                    onClick={handleMemory}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                    <SparklesIcon className="w-5 h-5 text-blue-600" />
+                    <span>Memory</span>
+                </button>
+
                 {/* Profile Option */}
                 <button
                     onClick={handleProfile}

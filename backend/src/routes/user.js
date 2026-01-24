@@ -8,6 +8,7 @@ import {
     reinforceMemory,
     getEffectiveGlobalContext
 } from '../services/memoryService.js';
+import { deleteUserEmbeddings } from '../services/contextService.js';
 
 const router = express.Router();
 
@@ -111,6 +112,63 @@ router.patch('/memories/:id/promote', async (req, res) => {
         else res.status(404).json({ error: "Memory not found" });
     } catch (err) {
         logger.error("Failed to promote memory", { error: err.message });
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+/**
+ * DELETE /api/user/history
+ * Deletes all sessions and messages for the user
+ */
+router.delete('/history', async (req, res) => {
+    try {
+        const userId = req.user.uid;
+
+        // Cleanup Pinecone embeddings for all sessions
+        await deleteUserEmbeddings(userId);
+
+        // Delete messages and sessions from Postgres
+        // Since sessions have user_id, we can delete them.
+        // Messages are usually linked to sessions.
+        // Assuming loose FK or CASCADE. Let's be explicit to be safe if CASCADE missing.
+        await pool.query(
+            `DELETE FROM messages WHERE session_id IN (SELECT id FROM sessions WHERE user_id = $1)`,
+            [userId]
+        );
+        await pool.query(
+            `DELETE FROM sessions WHERE user_id = $1`,
+            [userId]
+        );
+
+        res.json({ success: true, message: "History deleted successfully" });
+    } catch (err) {
+        logger.error("Failed to delete user history", { error: err.message });
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+/**
+ * DELETE /api/user/account
+ * Deletes entire user account and all associated data
+ */
+router.delete('/account', async (req, res) => {
+    try {
+        const userId = req.user.uid;
+
+        // 1. Cleanup Pinecone
+        await deleteUserEmbeddings(userId);
+
+        // 2. Delete data from Postgres (cascading manually where needed)
+        // Order matters if no CASCADE
+        await pool.query(`DELETE FROM user_context WHERE user_id = $1`, [userId]);
+        await pool.query(`DELETE FROM messages WHERE session_id IN (SELECT id FROM sessions WHERE user_id = $1)`, [userId]);
+        await pool.query(`DELETE FROM sessions WHERE user_id = $1`, [userId]);
+        await pool.query(`DELETE FROM projects WHERE user_id = $1`, [userId]);
+        await pool.query(`DELETE FROM users WHERE id = $1`, [userId]);
+
+        res.json({ success: true, message: "Account deleted successfully" });
+    } catch (err) {
+        logger.error("Failed to delete user account", { error: err.message });
         res.status(500).json({ error: "Server error" });
     }
 });

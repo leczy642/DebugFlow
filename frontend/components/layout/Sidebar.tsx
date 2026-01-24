@@ -92,6 +92,7 @@ export default function Sidebar() {
     const [settingsPopupOpen, setSettingsPopupOpen] = useState(false);
     const [showGlobalSettings, setShowGlobalSettings] = useState(false);
     const [settingsPopupPosition, setSettingsPopupPosition] = useState({ bottom: 0, left: 0 });
+    const [settingsView, setSettingsView] = useState<'profile' | 'memory'>('profile');
 
     const handleMoreOptions = (e: React.MouseEvent, sessionId: string) => {
         e.stopPropagation();
@@ -485,13 +486,17 @@ export default function Sidebar() {
                 <SettingsPopup
                     position={settingsPopupPosition}
                     onClose={() => setSettingsPopupOpen(false)}
-                    onOpenProfile={() => setShowGlobalSettings(true)}
+                    onOpenSettings={(section) => {
+                        setSettingsView(section);
+                        setShowGlobalSettings(true);
+                    }}
                 />
             )}
 
             <GlobalSettingsModal
                 isOpen={showGlobalSettings}
                 onClose={() => setShowGlobalSettings(false)}
+                view={settingsView}
             />
 
             {projectSettingsModalId && (() => {

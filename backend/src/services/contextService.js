@@ -493,3 +493,18 @@ export async function deleteSummaryEmbedding(sessionId) {
         logger.warn("Failed to delete summary embedding", { error: err.message });
     }
 }
+/**
+ * Delete all embeddings for a user (cleanup on account delete)
+ */
+export async function deleteUserEmbeddings(userId) {
+    try {
+        const index = getPineconeIndex();
+        // Delete all vectors in the context namespace for this user
+        await index.namespace(CONTEXT_NAMESPACE).deleteMany({
+            filter: { userId: { $eq: userId } }
+        });
+        logger.info(`Deleted all embeddings for user ${userId}`);
+    } catch (err) {
+        logger.warn("Failed to delete user embeddings", { error: err.message });
+    }
+}

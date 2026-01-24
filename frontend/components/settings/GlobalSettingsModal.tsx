@@ -3,10 +3,16 @@ import { Fragment, useState, useEffect } from 'react';
 import { Dialog, Transition, Tab } from '@headlessui/react';
 import { XMarkIcon, CheckCircleIcon, TrashIcon, ExclamationTriangleIcon, BoltIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/hooks/useAuth';
+import { useRouter } from 'next/navigation';
+import { signOut } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+import Cookies from 'js-cookie';
 
 interface GlobalSettingsModalProps {
     isOpen: boolean;
     onClose: () => void;
+    view?: 'profile' | 'memory';
 }
 
 interface Memory {
@@ -21,13 +27,30 @@ function classNames(...classes: string[]) {
     return classes.filter(Boolean).join(' ');
 }
 
-export default function GlobalSettingsModal({ isOpen, onClose }: GlobalSettingsModalProps) {
+export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }: GlobalSettingsModalProps) {
     const [activeTab, setActiveTab] = useState(0);
     const [instructions, setInstructions] = useState('');
     const [memories, setMemories] = useState<Memory[]>([]);
     const [newMemory, setNewMemory] = useState('');
     const [loading, setLoading] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+    const [confirmDeleteHistory, setConfirmDeleteHistory] = useState(false);
+    const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
+    const { user } = useAuth();
+    const router = useRouter();
+
+    // Reset tab when modal opens
+    useEffect(() => {
+        if (isOpen) {
+            // If view is memory, we use tab 0 (Instructions) or 1 (Memory)
+            // But wait, the previous code had 3 tabs: Profile (0), Instructions (1), Memory (2)
+            // Now we want "Memory" view to have 2 tabs: Instructions and Memory.
+            // And "Profile" view to have NO tabs, just the content.
+            setActiveTab(0);
+            setConfirmDeleteHistory(false);
+            setConfirmDeleteAccount(false);
+        }
+    }, [isOpen, view]);
 
     // Fetch data
     useEffect(() => {
@@ -100,6 +123,36 @@ export default function GlobalSettingsModal({ isOpen, onClose }: GlobalSettingsM
         }
     };
 
+    const handleDeleteHistory = async () => {
+        setLoading(true);
+        try {
+            await api.delete('/api/user/history');
+            onClose();
+            // Refresh page or clear local state
+            window.location.reload();
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteAccount = async () => {
+        setLoading(true);
+        try {
+            await api.delete('/api/user/account');
+            // Log out from Firebase and redirect
+            await signOut(auth);
+            Cookies.remove('debugflow_token');
+            router.push('/login');
+            onClose();
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const activeMemories = memories.filter(m => m.status === 'ACTIVE');
     const candidateMemories = memories.filter(m => m.status === 'CANDIDATE');
 
@@ -126,6 +179,9 @@ export default function GlobalSettingsModal({ isOpen, onClose }: GlobalSettingsM
             default: return 'Save Changes';
         }
     };
+
+    const authProvider = user?.providerData?.[0]?.providerId || 'email';
+    const providerName = authProvider === 'google.com' ? 'Google' : authProvider === 'github.com' ? 'GitHub' : 'Email/Password';
 
     return (
         <Transition.Root show={isOpen} as={Fragment}>
@@ -167,153 +223,248 @@ export default function GlobalSettingsModal({ isOpen, onClose }: GlobalSettingsM
 
                                 <div className="p-6">
                                     <Dialog.Title as="h3" className="text-xl font-semibold leading-6 text-gray-900 mb-6">
-                                        Global Settings & Brain
+                                        {view === 'memory' ? 'Memory settings' : 'Accounts and Profile'}
                                     </Dialog.Title>
 
                                     <Tab.Group selectedIndex={activeTab} onChange={setActiveTab}>
-                                        <Tab.List className="flex space-x-1 rounded-xl bg-blue-900/10 p-1 mb-6">
-                                            <Tab className={({ selected }) => classNames(
-                                                'w-full rounded-lg py-2.5 text-sm font-medium leading-5',
-                                                'ring-white ring-opacity-60 ring-offset-2 ring-offset-blue-400 focus:outline-none focus:ring-2',
-                                                selected ? 'bg-white text-blue-700 shadow' : 'text-blue-900 hover:bg-white/[0.12] hover:text-blue-800'
-                                            )}>
-                                                Instructions (Explicit)
-                                            </Tab>
-                                            <Tab className={({ selected }) => classNames(
-                                                'w-full rounded-lg py-2.5 text-sm font-medium leading-5',
-                                                'ring-white ring-opacity-60 ring-offset-2 ring-offset-blue-400 focus:outline-none focus:ring-2',
-                                                selected ? 'bg-white text-blue-700 shadow' : 'text-blue-900 hover:bg-white/[0.12] hover:text-blue-800'
-                                            )}>
-                                                Memory Ledger
-                                                {candidateMemories.length > 0 && (
-                                                    <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
-                                                        {candidateMemories.length}
-                                                    </span>
-                                                )}
-                                            </Tab>
-                                        </Tab.List>
+                                        {view === 'memory' && (
+                                            <Tab.List className="flex space-x-1 rounded-xl bg-blue-900/10 p-1 mb-6">
+                                                <Tab className={({ selected }) => classNames(
+                                                    'w-full rounded-lg py-2.5 text-sm font-medium leading-5',
+                                                    'ring-white ring-opacity-60 ring-offset-2 ring-offset-blue-400 focus:outline-none focus:ring-2',
+                                                    selected ? 'bg-white text-blue-700 shadow' : 'text-blue-900 hover:bg-white/[0.12] hover:text-blue-800'
+                                                )}>
+                                                    Instructions
+                                                </Tab>
+                                                <Tab className={({ selected }) => classNames(
+                                                    'w-full rounded-lg py-2.5 text-sm font-medium leading-5',
+                                                    'ring-white ring-opacity-60 ring-offset-2 ring-offset-blue-400 focus:outline-none focus:ring-2',
+                                                    selected ? 'bg-white text-blue-700 shadow' : 'text-blue-900 hover:bg-white/[0.12] hover:text-blue-800'
+                                                )}>
+                                                    Memory
+                                                    {candidateMemories.length > 0 && (
+                                                        <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
+                                                            {candidateMemories.length}
+                                                        </span>
+                                                    )}
+                                                </Tab>
+                                            </Tab.List>
+                                        )}
 
                                         <Tab.Panels>
-                                            <Tab.Panel className="focus:outline-none">
-                                                <div className="space-y-4">
-                                                    <p className="text-sm text-gray-500">
-                                                        These instructions define the AI's persona and base behavior across ALL projects.
-                                                    </p>
-                                                    <textarea
-                                                        rows={8}
-                                                        className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                                                        placeholder="e.g., 'I am a senior engineer. Be concise. Prefer functional programming.'"
-                                                        value={instructions}
-                                                        onChange={(e) => setInstructions(e.target.value)}
-                                                    />
-                                                    <div className="flex justify-end">
-                                                        <button
-                                                            type="button"
-                                                            className={getButtonClasses()}
-                                                            onClick={saveInstructions}
-                                                            disabled={saveStatus === 'saving'}
-                                                        >
-                                                            {saveStatus === 'success' && <CheckCircleIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />}
-                                                            {saveStatus === 'error' && <ExclamationTriangleIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />}
-                                                            {getButtonText()}
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </Tab.Panel>
+                                            {view === 'profile' ? (
+                                                <Tab.Panel static className="focus:outline-none">
+                                                    <div className="space-y-6">
+                                                        <div>
+                                                            <h4 className="text-sm font-medium text-gray-500 mb-1">Full Name</h4>
+                                                            <p className="text-base text-gray-900 font-semibold">{user?.displayName || 'Not set'}</p>
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="text-sm font-medium text-gray-500 mb-1">Email Address</h4>
+                                                            <p className="text-base text-gray-900 font-semibold">{user?.email}</p>
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="text-sm font-medium text-gray-500 mb-1">Authentication Provider</h4>
+                                                            <p className="text-base text-gray-900 font-semibold">{providerName}</p>
+                                                        </div>
 
-                                            <Tab.Panel className="focus:outline-none">
-                                                <div className="space-y-6">
-                                                    {/* Add New Memory */}
-                                                    <div className="flex gap-2">
-                                                        <input
-                                                            type="text"
-                                                            className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                                                            placeholder="Add a fact (e.g., 'Always use port 3000')"
-                                                            value={newMemory}
-                                                            onChange={(e) => setNewMemory(e.target.value)}
-                                                            onKeyDown={(e) => e.key === 'Enter' && addMemory()}
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            onClick={addMemory}
-                                                            disabled={saveStatus === 'saving'}
-                                                            className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:opacity-50"
-                                                        >
-                                                            {saveStatus === 'saving' ? 'Adding...' : 'Add'}
-                                                        </button>
-                                                    </div>
-
-                                                    {/* Candidate Memories */}
-                                                    {candidateMemories.length > 0 && (
-                                                        <div className="rounded-md bg-orange-50 p-4 border border-orange-200">
-                                                            <div className="flex">
-                                                                <div className="flex-shrink-0">
-                                                                    <SparklesIcon className="h-5 w-5 text-orange-400" aria-hidden="true" />
-                                                                </div>
-                                                                <div className="ml-3">
-                                                                    <h3 className="text-sm font-medium text-orange-800">Use Suggestions</h3>
-                                                                    <div className="mt-2 space-y-2">
-                                                                        {candidateMemories.map(memory => (
-                                                                            <div key={memory.id} className="flex items-center justify-between text-sm">
-                                                                                <p className="text-orange-700">{memory.content}</p>
-                                                                                <div className="flex gap-2">
-                                                                                    <button
-                                                                                        onClick={() => promoteMemory(memory.id)}
-                                                                                        className="text-green-600 hover:text-green-800 font-medium"
-                                                                                    >
-                                                                                        Approve
-                                                                                    </button>
-                                                                                    <button
-                                                                                        onClick={() => archiveMemory(memory.id)}
-                                                                                        className="text-red-600 hover:text-red-800"
-                                                                                    >
-                                                                                        Reject
-                                                                                    </button>
-                                                                                </div>
-                                                                            </div>
-                                                                        ))}
+                                                        <div className="pt-6 border-t border-gray-100 space-y-4">
+                                                            <div>
+                                                                <div className="flex items-center justify-between mb-2">
+                                                                    <div>
+                                                                        <h4 className="text-sm font-medium text-gray-900">Delete entire chat history</h4>
+                                                                        <p className="text-xs text-gray-500">This will remove all your sessions and messages permanently.</p>
                                                                     </div>
+                                                                    {!confirmDeleteHistory ? (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setConfirmDeleteHistory(true)}
+                                                                            className="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 shadow-sm hover:bg-red-100"
+                                                                        >
+                                                                            Delete History
+                                                                        </button>
+                                                                    ) : (
+                                                                        <div className="flex gap-2">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setConfirmDeleteHistory(false)}
+                                                                                className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+                                                                            >
+                                                                                Cancel
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={handleDeleteHistory}
+                                                                                className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700"
+                                                                            >
+                                                                                Confirm Delete
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            <div>
+                                                                <div className="flex items-center justify-between">
+                                                                    <div>
+                                                                        <h4 className="text-sm font-medium text-gray-900">Delete account</h4>
+                                                                        <p className="text-xs text-gray-500">Permanently remove your account and all associated data.</p>
+                                                                    </div>
+                                                                    {!confirmDeleteAccount ? (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setConfirmDeleteAccount(true)}
+                                                                            className="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 shadow-sm hover:bg-red-100"
+                                                                        >
+                                                                            Delete Account
+                                                                        </button>
+                                                                    ) : (
+                                                                        <div className="flex gap-2">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setConfirmDeleteAccount(false)}
+                                                                                className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+                                                                            >
+                                                                                Cancel
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={handleDeleteAccount}
+                                                                                className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700"
+                                                                            >
+                                                                                Delete Everything
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                    )}
+                                                    </div>
+                                                </Tab.Panel>
+                                            ) : (
+                                                <>
+                                                    <Tab.Panel className="focus:outline-none">
+                                                        <div className="space-y-4">
+                                                            <p className="text-sm text-gray-500">
+                                                                These instructions define the AI's persona and base behavior across ALL projects.
+                                                            </p>
+                                                            <textarea
+                                                                rows={8}
+                                                                className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
+                                                                placeholder="e.g., 'I am a senior engineer. Be concise. Prefer functional programming.'"
+                                                                value={instructions}
+                                                                onChange={(e) => setInstructions(e.target.value)}
+                                                            />
+                                                            <div className="flex justify-end">
+                                                                <button
+                                                                    type="button"
+                                                                    className={getButtonClasses()}
+                                                                    onClick={saveInstructions}
+                                                                    disabled={saveStatus === 'saving'}
+                                                                >
+                                                                    {saveStatus === 'success' && <CheckCircleIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />}
+                                                                    {saveStatus === 'error' && <ExclamationTriangleIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />}
+                                                                    {getButtonText()}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </Tab.Panel>
 
-                                                    {/* Active Memories */}
-                                                    <div>
-                                                        <h4 className="text-sm font-medium text-gray-500 mb-2">Active Memory Ledger</h4>
-                                                        <ul className="divide-y divide-gray-100 rounded-md border border-gray-200 bg-white">
-                                                            {activeMemories.map(memory => (
-                                                                <li key={memory.id} className="flex items-center justify-between gap-x-6 py-3 px-4">
-                                                                    <div className="min-w-0">
-                                                                        <div className="flex items-start gap-x-3">
-                                                                            <p className="text-sm font-semibold leading-6 text-gray-900">{memory.content}</p>
-                                                                            <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${memory.type === 'EXPLICIT' ? 'bg-purple-50 text-purple-700 ring-purple-600/20' :
-                                                                                memory.type === 'PERSONAL_INFO' ? 'bg-blue-50 text-blue-700 ring-blue-600/20' :
-                                                                                    'bg-green-50 text-green-700 ring-green-600/20'
-                                                                                }`}>
-                                                                                {memory.type}
-                                                                            </span>
+                                                    <Tab.Panel className="focus:outline-none">
+                                                        <div className="space-y-6">
+                                                            {/* Add New Memory */}
+                                                            <div className="flex gap-2">
+                                                                <input
+                                                                    type="text"
+                                                                    className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
+                                                                    placeholder="Add a fact (e.g., 'Always use port 3000')"
+                                                                    value={newMemory}
+                                                                    onChange={(e) => setNewMemory(e.target.value)}
+                                                                    onKeyDown={(e) => e.key === 'Enter' && addMemory()}
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={addMemory}
+                                                                    disabled={saveStatus === 'saving'}
+                                                                    className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                                                                >
+                                                                    {saveStatus === 'saving' ? 'Adding...' : 'Add'}
+                                                                </button>
+                                                            </div>
+
+                                                            {/* Candidate Memories */}
+                                                            {candidateMemories.length > 0 && (
+                                                                <div className="rounded-md bg-orange-50 p-4 border border-orange-200">
+                                                                    <div className="flex">
+                                                                        <div className="flex-shrink-0">
+                                                                            <SparklesIcon className="h-5 w-5 text-orange-400" aria-hidden="true" />
+                                                                        </div>
+                                                                        <div className="ml-3">
+                                                                            <h3 className="text-sm font-medium text-orange-800">Use Suggestions</h3>
+                                                                            <div className="mt-2 space-y-2">
+                                                                                {candidateMemories.map(memory => (
+                                                                                    <div key={memory.id} className="flex items-center justify-between text-sm">
+                                                                                        <p className="text-orange-700">{memory.content}</p>
+                                                                                        <div className="flex gap-2">
+                                                                                            <button
+                                                                                                onClick={() => promoteMemory(memory.id)}
+                                                                                                className="text-green-600 hover:text-green-800 font-medium"
+                                                                                            >
+                                                                                                Approve
+                                                                                            </button>
+                                                                                            <button
+                                                                                                onClick={() => archiveMemory(memory.id)}
+                                                                                                className="text-red-600 hover:text-red-800"
+                                                                                            >
+                                                                                                Reject
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
                                                                         </div>
                                                                     </div>
-                                                                    <div className="flex flex-none items-center gap-x-4">
-                                                                        <button
-                                                                            onClick={() => archiveMemory(memory.id)}
-                                                                            className="hidden rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:block"
-                                                                        >
-                                                                            Forget
-                                                                        </button>
-                                                                    </div>
-                                                                </li>
-                                                            ))}
-                                                            {activeMemories.length === 0 && (
-                                                                <li className="py-4 text-center text-sm text-gray-500">
-                                                                    No active memories yet. Try telling the AI to "Remember this".
-                                                                </li>
+                                                                </div>
                                                             )}
-                                                        </ul>
-                                                    </div>
-                                                </div>
-                                            </Tab.Panel>
+
+                                                            {/* Active Memories */}
+                                                            <div>
+                                                                <h4 className="text-sm font-medium text-gray-500 mb-2">Active Memory Ledger</h4>
+                                                                <ul className="divide-y divide-gray-100 rounded-md border border-gray-200 bg-white">
+                                                                    {activeMemories.map(memory => (
+                                                                        <li key={memory.id} className="flex items-center justify-between gap-x-6 py-3 px-4">
+                                                                            <div className="min-w-0">
+                                                                                <div className="flex items-start gap-x-3">
+                                                                                    <p className="text-sm font-semibold leading-6 text-gray-900">{memory.content}</p>
+                                                                                    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${memory.type === 'EXPLICIT' ? 'bg-purple-50 text-purple-700 ring-purple-600/20' :
+                                                                                        memory.type === 'PERSONAL_INFO' ? 'bg-blue-50 text-blue-700 ring-blue-600/20' :
+                                                                                            'bg-green-50 text-green-700 ring-green-600/20'
+                                                                                        }`}>
+                                                                                        {memory.type}
+                                                                                    </span>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="flex flex-none items-center gap-x-4">
+                                                                                <button
+                                                                                    onClick={() => archiveMemory(memory.id)}
+                                                                                    className="hidden rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:block"
+                                                                                >
+                                                                                    Forget
+                                                                                </button>
+                                                                            </div>
+                                                                        </li>
+                                                                    ))}
+                                                                    {activeMemories.length === 0 && (
+                                                                        <li className="py-4 text-center text-sm text-gray-500">
+                                                                            No active memories yet. Try telling the AI to "Remember this".
+                                                                        </li>
+                                                                    )}
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+                                                    </Tab.Panel>
+                                                </>
+                                            )}
                                         </Tab.Panels>
                                     </Tab.Group>
                                 </div>

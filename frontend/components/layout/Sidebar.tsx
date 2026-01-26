@@ -322,17 +322,19 @@ export default function Sidebar() {
                 </div>
 
                 {/* NEW PROJECT BUTTON */}
-                <div className="px-3 py-2">
-                    <button
-                        onClick={() => setNewProjectModalOpen(true)}
-                        className="w-full text-left px-3 py-2 text-sm text-[#606060] hover:text-[#1A1A1A] hover:bg-[#EAEAEA] rounded-lg transition-all duration-200 flex items-center gap-2"
-                    >
-                        <FolderIcon className="w-4 h-4" />
-                        <span className={`${sidebarOpen ? "opacity-100" : "opacity-0 w-0 overflow-hidden"}`}>
-                            New Project
-                        </span>
-                    </button>
-                </div>
+                {sidebarOpen && (
+                    <div className="px-3 py-2">
+                        <button
+                            onClick={() => setNewProjectModalOpen(true)}
+                            className="w-full text-left px-3 py-2 text-sm text-[#606060] hover:text-[#1A1A1A] hover:bg-[#EAEAEA] rounded-lg transition-all duration-200 flex items-center gap-2"
+                        >
+                            <FolderIcon className="w-4 h-4 flex-shrink-0" />
+                            <span>
+                                New Project
+                            </span>
+                        </button>
+                    </div>
+                )}
 
                 {/* SESSION HISTORY */}
                 {sidebarOpen && (
@@ -368,7 +370,7 @@ export default function Sidebar() {
                                             className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer"
                                             onClick={() => handleProjectClick(project.id)}
                                         >
-                                            <FolderIcon className={`w-4 h-4 ${isSelected ? "text-blue-700" : "text-gray-500"}`} />
+                                            <FolderIcon className={`w-4 h-4 flex-shrink-0 ${isSelected ? "text-blue-700" : "text-gray-500"}`} />
                                             <span className="truncate">{project.name}</span>
                                             <span className={`text-xs ml-1 ${isSelected ? "text-blue-500" : "text-gray-400"}`}>
                                                 ({sessionCount})

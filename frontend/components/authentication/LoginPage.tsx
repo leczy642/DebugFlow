@@ -165,12 +165,27 @@ export default function LoginPage() {
 
         setIsLoading(true);
         try {
-            // Simulate API call
-            await new Promise((resolve) => setTimeout(resolve, 1500));
+            const { sendSignInLinkToEmail } = await import('firebase/auth');
+
+            const actionCodeSettings = {
+                // URL you want to redirect back to. The domain (www.example.com) for this
+                // URL must be in the authorized domains list in the Firebase Console.
+                url: `${window.location.origin}/confirm-login`,
+                // This must be true.
+                handleCodeInApp: true,
+            };
+
+            await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+
+            // The user will be redirected back here, so we save the email in local storage
+            // so they don't have to re-enter it.
+            window.localStorage.setItem('emailForSignIn', email);
+
             setSuccess(true);
             setEmail("");
-        } catch (err) {
-            setError("Failed to send sign-in link. Please try again.");
+        } catch (err: any) {
+            console.error("Error sending magic link:", err);
+            setError(err.message || "Failed to send sign-in link. Please try again.");
         } finally {
             setIsLoading(false);
         }
@@ -254,7 +269,7 @@ export default function LoginPage() {
 
                             {success && (
                                 <div className="px-4 py-3 rounded-xl bg-green-50 text-green-700 text-xs font-bold animate-in fade-in slide-in-from-top-1 duration-200">
-                                    Success! Check your email for a magic link.
+                                    Success! Check your email or spam folder for a magic link.
                                 </div>
                             )}
 

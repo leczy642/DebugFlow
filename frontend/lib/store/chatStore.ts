@@ -430,8 +430,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
         return {
           messages: [...state.messages, assistantMessage],
-          awaitingSessionId: null, // Clear loading state immediately as we start streaming
-          // isStreaming remains true
+          // awaitingSessionId remains set to keep TypingBubble visible until content arrives
         };
       });
 
@@ -470,7 +469,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 set((state) => ({
                   messages: state.messages.map((m) =>
                     m.id === assistantMessageId ? { ...m, content: accumulatedContent } : m
-                  )
+                  ),
+                  awaitingSessionId: null, // Clear loading state as soon as we have content
                 }));
               }
 

@@ -8,14 +8,30 @@ import { Button } from "../ui/Button";
 import { signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
 import { auth, googleProvider, githubProvider } from '@/lib/firebase';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/hooks/useAuth';
 
 export default function LoginPage() {
     const router = useRouter();
+    const { isAuthenticated, loading: authLoading } = useAuth();
     const [token, setToken] = useState<string | null>(null);
     const [email, setEmail] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+
+    useEffect(() => {
+        if (!authLoading && isAuthenticated) {
+            router.replace('/');
+        }
+    }, [authLoading, isAuthenticated, router]);
+
+    if (authLoading || isAuthenticated) {
+        return (
+            <div className="w-full min-h-screen bg-gray-50 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            </div>
+        );
+    }
 
     const handleGoogle = async () => {
         try {

@@ -13,9 +13,8 @@
 import "../utils/loadEnv.js";
 import { pool } from "../db/postgres_connect.js";
 import { chatWithAI } from "./chatService.js";
-import { InferenceClient } from "@huggingface/inference";
-import { Pinecone } from "@pinecone-database/pinecone";
 import { logger } from "../utils/logger.js";
+import { ragService } from "./ragService.js";
 import { getEffectiveGlobalContext, proposeCandidate } from "./memoryService.js";
 
 // ====== CONFIGURATION ======
@@ -30,10 +29,33 @@ const HUGGINGFACE_EMBEDDING_MODEL = process.env.HUGGINGFACE_EMBEDDING_MODEL || '
 
 // Pinecone namespace for session summaries (separate from logs)
 const CONTEXT_NAMESPACE = "session-context";
+const LOGS_NAMESPACE = ""; // Default namespace for raw logs
 
-// Initialize clients
-const hf = new InferenceClient(process.env.HUGGINGFACE_API_KEY);
-const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
+const MAX_LOGS_CAP = 3;                // Maximum number of raw logs to include
+const LOG_RELEVANCE_THRESHOLD = 0.5;   // Lower threshold for raw logs to catch wider signals
+
+/**
+ * Store session summary embedding in Pinecone for relevance search
+ */
+async function storeSummaryEmbedding(sessionId, projectId, userId, summary, title) {
+    try {
+        await ragService.upsert([{
+            id: `session-${sessionId}`,
+            text: summary,
+            metadata: {
+                type: "session_summary",
+                sessionId,
+                projectId,
+                userId,
+                title,
+                createdAt: new Date().toISOString()
+            }
+        }], CONTEXT_NAMESPACE);
+        logger.info(`Stored embedding for session ${sessionId}`);
+    } catch (err) {
+        logger.warn("Failed to store summary embedding", { error: err.message });
+    }
+}
 
 /**
  * Estimate token count for a string (rough approximation)
@@ -44,98 +66,42 @@ export function estimateTokens(text) {
 }
 
 /**
- * Generate embedding for text using HuggingFace
- */
-async function generateEmbedding(text) {
-    try {
-        const resp = await hf.featureExtraction({
-            model: HUGGINGFACE_EMBEDDING_MODEL,
-            inputs: text,
-        });
-
-        // Handle nested array response (some models return [[...]])
-        const vector = Array.isArray(resp[0]) ? resp[0] : resp;
-
-        if (!Array.isArray(vector) || typeof vector[0] !== 'number') {
-            throw new Error('Unexpected embedding vector format');
-        }
-
-        return vector;
-    } catch (err) {
-        logger.warn("Embedding generation failed", { error: err.message });
-        return null;
-    }
-}
-
-/**
- * Get Pinecone index
- */
-function getPineconeIndex() {
-    const indexName = process.env.PINECONE_INDEX_NAME || "debugflow-logs";
-    return pinecone.index(indexName);
-}
-
-/**
- * Store session summary embedding in Pinecone for relevance search
- */
-async function storeSummaryEmbedding(sessionId, projectId, userId, summary, title) {
-    try {
-        const embedding = await generateEmbedding(summary);
-        if (!embedding) return;
-
-        const index = getPineconeIndex();
-        await index.namespace(CONTEXT_NAMESPACE).upsert([{
-            id: `session-${sessionId}`,
-            values: embedding,
-            metadata: {
-                type: "session_summary",
-                sessionId,
-                projectId,
-                userId,
-                title,
-                summary,
-                createdAt: new Date().toISOString()
-            }
-        }]);
-        logger.info(`Stored embedding for session ${sessionId}`);
-    } catch (err) {
-        logger.warn("Failed to store summary embedding", { error: err.message });
-    }
-}
-
-/**
  * Retrieve relevant summaries using semantic search
  */
 async function retrieveRelevantSummaries(query, projectId, currentSessionId, topK = MAX_SUMMARIES_CAP) {
     try {
-        const embedding = await generateEmbedding(query);
-        if (!embedding) return null;
-
-        const index = getPineconeIndex();
-        const results = await index.namespace(CONTEXT_NAMESPACE).query({
-            vector: embedding,
+        const results = await ragService.search(query, {
             topK,
-            filter: {
-                projectId: { $eq: projectId }
-            },
-            includeMetadata: true
+            namespace: CONTEXT_NAMESPACE,
+            filter: { projectId: { $eq: projectId } }
         });
 
         // Filter out current session and apply relevance threshold
-        return results.matches
+        return results
             .filter(m =>
-                m.metadata?.sessionId !== currentSessionId &&
+                m.sessionId !== currentSessionId &&
                 m.score >= RELEVANCE_THRESHOLD
-            )
-            .map(m => ({
-                sessionId: m.metadata.sessionId,
-                title: m.metadata.title,
-                summary: m.metadata.summary,
-                score: m.score
-            }));
+            );
     } catch (err) {
         logger.warn("Relevance search failed, falling back to recency", { error: err.message });
         return null; // Signal to use fallback
+    }
+}
+
+/**
+ * Retrieve similar historical logs from the raw logs database
+ */
+async function retrieveSimilarHistoricalLogs(query, topK = MAX_LOGS_CAP) {
+    try {
+        const results = await ragService.search(query, {
+            topK,
+            namespace: LOGS_NAMESPACE
+        });
+
+        return results.filter(m => m.score >= LOG_RELEVANCE_THRESHOLD);
+    } catch (err) {
+        logger.error("Historical log search failed", { error: err.message });
+        return [];
     }
 }
 
@@ -419,14 +385,49 @@ export async function buildContextMessages(projectId, currentSessionId, currentQ
         }
 
         if (addedCount > 0) {
-            // Add a note about prioritizing current conversation
-            summaryContent += "\nNote: If any context above conflicts with the current conversation, prioritize the user's explicit statements.";
-
             contextMessages.push({
                 role: "system",
                 content: summaryContent.trim()
             });
         }
+    }
+
+    // 4. Add historical raw logs (Dual-RAG)
+    if (currentQuery) {
+        const historicalLogs = await retrieveSimilarHistoricalLogs(currentQuery);
+
+        if (historicalLogs.length > 0) {
+            let logsContent = "SIMILAR HISTORICAL INCIDENTS FOUND IN LOGS:\n";
+            let logsAdded = 0;
+
+            for (const log of historicalLogs) {
+                if (logsAdded >= MAX_LOGS_CAP) break;
+
+                const logLine = `[${log.type.toUpperCase()}] Source: ${log.source}\nSimilarity: ${Math.round(log.score * 100)}%\nContent: ${log.text}\n\n`;
+                const logTokens = estimateTokens(logLine);
+
+                if (tokensUsed + logTokens > tokenLimit) break;
+
+                logsContent += logLine;
+                tokensUsed += logTokens;
+                logsAdded++;
+            }
+
+            if (logsAdded > 0) {
+                contextMessages.push({
+                    role: "system",
+                    content: logsContent.trim()
+                });
+            }
+        }
+    }
+
+    // Add final prioritization note
+    if (contextMessages.length > 0) {
+        contextMessages.push({
+            role: "system",
+            content: "Note: The context provided above is for reference. If it conflicts with the user's current problem description, prioritize the user's explicit statements in this conversation."
+        });
     }
 
     return contextMessages;
@@ -486,8 +487,7 @@ export async function getSessionInfo(sessionId) {
  */
 export async function deleteSummaryEmbedding(sessionId) {
     try {
-        const index = getPineconeIndex();
-        await index.namespace(CONTEXT_NAMESPACE).deleteOne(`session-${sessionId}`);
+        await ragService.delete([`session-${sessionId}`], CONTEXT_NAMESPACE);
         logger.info(`Deleted embedding for session ${sessionId}`);
     } catch (err) {
         logger.warn("Failed to delete summary embedding", { error: err.message });

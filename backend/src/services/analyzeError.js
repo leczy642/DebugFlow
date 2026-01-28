@@ -7,7 +7,7 @@
  */
 import "../utils/loadEnv.js";
 import { InferenceClient } from "@huggingface/inference";
-import { RetrieveSimilarLogsService, retrieveSimilarLogs} from './retrieveSimilarLogs.js';
+import { retrieveSimilarLogs } from './retrieveSimilarLogs.js';
 import { retryWithBackoff } from "../utils/retry.js";
 import { logger } from "../utils/logger.js";
 import { withTimeout } from "../utils/withTimeout.js";

@@ -8,106 +8,26 @@
 //import "dotenv/config";  // loads .env automatically from project root
 //import { loadEnv } from "../utils/loadEnv.js";
 import "../utils/loadEnv.js";
-import { InferenceClient } from "@huggingface/inference";
-import { OpenAIEmbeddings } from "@langchain/openai";
-import { Pinecone } from "@pinecone-database/pinecone";
+import { ragService } from "./ragService.js";
 import { logger } from "../utils/logger.js";
 
-const TEST_MODE = process.env.TEST_MODE === "true";
-
-// -------------------------------
-// Winston Structured Logging
-// Why: Enables production-safe logs + JSON formatting for observability
-// -------------------------------
-
-
-// -------------------------------
-// Pinecone Init (same config style as analyzeError.js)
-// Why: Keep system consistent across services
-// -------------------------------
-const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
-const PINECONE_INDEX = process.env.PINECONE_INDEX_NAME;
-
-if (!PINECONE_API_KEY || !PINECONE_INDEX) {
-  logger.error("Missing Pinecone credentials");
-  throw new Error("Missing Pinecone configuration");
-}
-
-const pinecone = new Pinecone({ apiKey: PINECONE_API_KEY });
-const index = pinecone.Index(PINECONE_INDEX);
-
-// -------------------------------
-// Embedding Provider Init
-// Input: Plain text string
-// Output: Numeric embedding vector array
-// Why: Used for similarity search
-// -------------------------------
-const openaiEmbeddings = new OpenAIEmbeddings({
-  apiKey: process.env.OPENAI_API_KEY,
-  model: "text-embedding-3-small",
-});
-
-//const hf = new InferenceClient(process.env.HUGGINGFACE_API_KEY);
-
-// -------------------------------
-// generateEmbedding()
-// Input: user text
-// Output: embedding vector
-// WHY: Uses HF fallback if OpenAI fails
-// -------------------------------
-class RetrieveSimilarLogsService {
-
-  constructor(){
-    this.hf = new InferenceClient(process.env.HUGGINGFACE_API_KEY);
-  }
-
-  async generateEmbedding(text) {
-    try {
-      return await openaiEmbeddings.embedQuery(text);
-    } catch {
-      logger.warn("OpenAI embedding failed → using HuggingFace fallback");
-      return await this.hf.featureExtraction({
-        model: "sentence-transformers/all-MiniLM-L6-v2",
-        inputs: text,
-      });
-    }
-  }
-}
-// -------------------------------
-// retrieveSimilarLogs()
-// WHAT: Vector search against Pinecone
-// INPUT: query string, topK results
-// OUTPUT: array of normalized log objects
-// WHY: Primary retrieval engine for analyzeError()
-// -------------------------------
-const retrieveSimilarLogsService = new RetrieveSimilarLogsService();
-
+/**
+ * retrieveSimilarLogs()
+ * WHAT: Vector search against Pinecone using standardized ragService
+ * INPUT: query string, topK results
+ * OUTPUT: array of normalized log objects
+ * WHY: Primary retrieval engine for analyzeError()
+ */
 export async function retrieveSimilarLogs(query, topK = 5) {
-  logger.info({ event: "embedding_start", query });
+  logger.info({ event: "rag_logs_search_start", query, topK });
 
-  //generate embedding
-  //const vector = await generateEmbedding(query);
-  const vector = await retrieveSimilarLogsService.generateEmbedding(query);
-
-  logger.info({ event: "pinecone_query", topK });
-
-  //query pinecone with the embeddings 
-  const response = await index.query({
-    vector,
-    topK,
-    includeMetadata: true,
-  });
-
-  //return the topK results
-  return response.matches.map((m) => ({
-    id: m.id,
-    score: m.score,
-    type: m.metadata?.type || "unknown",
-    source: m.metadata?.source || "unknown",
-    category: m.metadata?.category || "unknown",
-    timestamp: m.metadata?.timestamp || "unknown",
-    text: m.metadata?.text || "No content",
-  }));
+  try {
+    const results = await ragService.search(query, { topK });
+    return results;
+  } catch (error) {
+    logger.error("Failed to retrieve similar logs", { error: error.message });
+    return [];
+  }
 }
 
 // -------------------------------
@@ -169,7 +89,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   );
 }
 
-export {RetrieveSimilarLogsService };
+
 // ---------------------------
 // Running this module in commandline 
 // ---------------------------

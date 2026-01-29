@@ -1,4 +1,49 @@
 // components/layout/Sidebar.tsx
+/**
+ * -----------------------------------------------------------------------------
+ * PURPOSE:
+ * Provides the main navigation sidebar for the DebugFlow application, enabling 
+ * users to manage debug sessions, projects, and access global settings. The 
+ * sidebar serves as the primary interface for organizing and switching between 
+ * different debugging contexts.
+ *
+ * ROLE IN PROJECT:
+ * Acts as the main navigation hub and session manager. It integrates with both 
+ * UI and chat state management to provide a cohesive user experience for 
+ * organizing debugging sessions into projects, accessing history, and managing 
+ * application settings.
+ *
+ * WHAT THIS FILE DOES:
+ * 1. Renders a collapsible sidebar with session/project organization
+ * 2. Manages two main views: Projects section and History section
+ * 3. Handles creation and selection of sessions and projects
+ * 4. Provides dropdown menus for session/project actions (rename, delete, pin, etc.)
+ * 5. Integrates with global settings and project-specific modals
+ * 6. Shows pinned sessions and visual feedback for recently updated items
+ * 7. Manages sidebar expansion/collapse with responsive layout adjustments
+ *
+ * INPUTS:
+ * - UI state from useUIStore: sidebarOpen, toggleSidebar, modal triggers, etc.
+ * - Chat state from useChatStore: sessions, projects, loading functions, CRUD operations
+ * - Authentication state from useAuth: user information for personalization
+ * - User interactions: clicks, hovers, dropdown triggers, modal interactions
+ *
+ * OUTPUTS:
+ * - Visual sidebar navigation interface
+ * - State updates through store actions (session/project selection, pinning, etc.)
+ * - Modal/dropdown triggers for various actions
+ * - Input bar positioning (centered vs docked) based on context
+ *
+ * IMPORTANT:
+ * 1. This component manages complex conditional rendering with sidebar collapse states
+ * 2. It handles overlapping dropdown positioning calculations based on available screen space
+ * 3. The component separates "unassigned sessions" from project-bound sessions
+ * 4. It synchronizes sidebar state with input bar positioning (center vs dock)
+ * 5. Auto-refreshes data when sidebar opens to ensure current state
+ * 6. Implements smooth animations and transitions for UX polish
+ * 7. Contains logic for truncating long session titles with tooltips
+ * -----------------------------------------------------------------------------
+ */
 "use client";
 import { useUIStore } from "../../lib/store/uiStore";
 import { useChatStore } from "../../lib/store/chatStore";

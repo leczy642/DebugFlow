@@ -12,6 +12,7 @@ import { logger } from "../utils/logger.js";
 import { requireRole } from "../middleware/roleMiddleware.js";
 import {
     updateUserStatus,
+    updateUserBlock,
     setUserSuggestion,
     logAuditEvent,
     getUserById,
@@ -86,22 +87,42 @@ router.get("/users/search/:query", async (req, res) => {
  */
 router.patch("/user/:id/block", async (req, res) => {
     const { id } = req.params;
-    const { blocked } = req.body; // boolean
+    const { duration } = req.body; // '24h', '1w', '1m', '3m', or null (to restore)
 
     try {
         const targetUser = await getUserById(id);
         if (!targetUser) return res.status(404).json({ error: "User not found" });
 
-        // Admins cannot block Super Users or other Admins (unless they are Super User themselves)
-        if (req.user.role !== 'super_user' && (targetUser.role === 'admin' || targetUser.role === 'super_user')) {
-            return res.status(403).json({ error: "Insufficient permissions to block this user" });
+        // Restrictions
+        if (req.user.role !== 'super_user') {
+            // Admins cannot block other Admins or the Super User
+            if (targetUser.role === 'admin' || targetUser.role === 'super_user') {
+                return res.status(403).json({ error: "Insufficient permissions to block this user" });
+            }
+        } else {
+            // Super User cannot block themselves
+            if (id === req.user.uid) {
+                return res.status(400).json({ error: "You cannot block yourself" });
+            }
         }
 
-        const newStatus = blocked ? 'blocked' : 'active';
-        await updateUserStatus(id, newStatus);
-        await logAuditEvent(req.user.uid, id, blocked ? 'USER_BLOCK' : 'USER_RESTORE', { status: newStatus });
+        let expiresAt = null;
+        let status = 'active';
 
-        res.json({ success: true, status: newStatus });
+        if (duration) {
+            status = 'blocked';
+            const now = new Date();
+            if (duration === '24h') expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+            else if (duration === '1w') expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+            else if (duration === '1m') expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+            else if (duration === '3m') expiresAt = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+            else return res.status(400).json({ error: "Invalid duration" });
+        }
+
+        await updateUserBlock(id, status, expiresAt);
+        await logAuditEvent(req.user.uid, id, duration ? 'USER_BLOCK' : 'USER_RESTORE', { status, expiresAt, duration });
+
+        res.json({ success: true, status, expiresAt });
     } catch (err) {
         logger.error("User Block Action Failed", { error: err.message });
         res.status(500).json({ error: "Failed to update user status" });

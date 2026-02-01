@@ -99,15 +99,40 @@ async function authenticateToken(req, res, next) {
       await updateUserLogin(decodedToken.uid);
     }
 
-    // 6. Check account status
+    // 6. Check account status (Bans are permanent)
     if (dbUser.status === 'banned') {
       return res.status(403).json({ error: 'Your account has been permanently banned.' });
     }
 
-    // Note: 'blocked' status will be handled at the route level for specific actions, 
-    // or here if we want a total lockout. The user requested:
-    // "Blocked (Admin action): Temporary suspension. The user cannot send messages or create sessions, but can still view their history."
-    // So we DON'T block them here, but we will in specific middlewares.
+    // 7. Check for automated block lifting
+    if (dbUser.status === 'blocked') {
+      const now = new Date();
+      if (dbUser.block_expires_at && now > new Date(dbUser.block_expires_at)) {
+        // Block has expired! Auto-restore
+        await updateUserStatus(dbUser.id, 'active');
+        dbUser.status = 'active';
+        console.log(`🔓 Block automatically lifted for user: ${dbUser.email}`);
+      } else {
+        // Still blocked - calculate remaining time
+        let message = "Your account has been blocked.";
+        if (dbUser.block_expires_at) {
+          const expires = new Date(dbUser.block_expires_at);
+          const diffMs = expires - now;
+          const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+          const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+          const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+          if (days > 0) {
+            message = `Your account has been blocked for ${days} days and ${hours} hours remaining.`;
+          } else if (hours > 0) {
+            message = `Your account has been blocked for ${hours} hours and ${minutes} minutes remaining.`;
+          } else {
+            message = `Your account has been blocked for ${minutes} minutes remaining.`;
+          }
+        }
+        return res.status(403).json({ error: message });
+      }
+    }
 
     // Attach verified user data and database record to request
     req.user = {

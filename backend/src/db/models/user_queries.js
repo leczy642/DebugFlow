@@ -25,6 +25,7 @@ export async function ensureUsersTableExists() {
         permissions JSONB DEFAULT '{}',
         suggested_role VARCHAR(20),
         suggestion_reason TEXT,
+        block_expires_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT NOW(),
         last_login TIMESTAMP
       );
@@ -40,7 +41,8 @@ export async function ensureUsersTableExists() {
             `ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'`,
             `ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{}'`,
             `ALTER TABLE users ADD COLUMN IF NOT EXISTS suggested_role VARCHAR(20)`,
-            `ALTER TABLE users ADD COLUMN IF NOT EXISTS suggestion_reason TEXT`
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS suggestion_reason TEXT`,
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS block_expires_at TIMESTAMP`
         ];
 
         for (const query of alterQueries) {
@@ -145,6 +147,17 @@ export async function updateUserStatus(uid, status) {
     const { rows } = await pool.query(
         `UPDATE users SET status = $1 WHERE id = $2 RETURNING *`,
         [status, uid]
+    );
+    return rows[0];
+}
+
+/**
+ * Updates a user's block status and expiration.
+ */
+export async function updateUserBlock(uid, status, expiresAt) {
+    const { rows } = await pool.query(
+        `UPDATE users SET status = $1, block_expires_at = $2 WHERE id = $3 RETURNING *`,
+        [status, expiresAt, uid]
     );
     return rows[0];
 }

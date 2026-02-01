@@ -13,6 +13,57 @@ import {
     XMarkIcon
 } from "@heroicons/react/24/outline";
 
+// --- BLOCK DURATION MODAL ---
+function BlockDurationModal({ isOpen, onClose, onConfirm, userEmail }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: (duration: string) => void;
+    userEmail: string;
+}) {
+    const durations = [
+        { label: '24 Hours', value: '24h' },
+        { label: '1 Week', value: '1w' },
+        { label: '1 Month', value: '1m' },
+        { label: '3 Months', value: '3m' },
+    ];
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl border border-gray-100 p-8">
+                <div className="flex items-center gap-3 text-red-600 mb-6">
+                    <ShieldExclamationIcon className="w-8 h-8" />
+                    <h3 className="text-xl font-bold text-gray-900">Block User</h3>
+                </div>
+
+                <p className="text-sm text-gray-500 mb-8">
+                    Select a block duration for <span className="font-semibold text-gray-900">{userEmail}</span>. The user will be unable to log in until the time elapses.
+                </p>
+
+                <div className="space-y-3 mb-8">
+                    {durations.map((d) => (
+                        <button
+                            key={d.value}
+                            onClick={() => onConfirm(d.value)}
+                            className="w-full py-3 px-4 rounded-xl border border-gray-200 text-left font-medium text-gray-700 hover:border-red-500 hover:bg-red-50 transition-colors"
+                        >
+                            {d.label}
+                        </button>
+                    ))}
+                </div>
+
+                <button
+                    onClick={onClose}
+                    className="w-full py-3 rounded-xl font-medium text-gray-500 hover:bg-gray-100 transition"
+                >
+                    Cancel
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // --- ROLE ACTION MODAL ---
 function RoleActionModal({ isOpen, onClose, onConfirm, targetRole, userEmail, isSuperUser }: {
     isOpen: boolean;
@@ -101,6 +152,16 @@ export default function AdminDashboard() {
         targetRole: ""
     });
 
+    const [blockModal, setBlockModal] = useState<{
+        isOpen: boolean;
+        userId: string;
+        userEmail: string;
+    }>({
+        isOpen: false,
+        userId: "",
+        userEmail: ""
+    });
+
     const fetchProfile = useCallback(async () => {
         try {
             const data = await api.get('/api/user/profile');
@@ -139,13 +200,40 @@ export default function AdminDashboard() {
         }
     };
 
-    const handleBlockUser = async (userId: string, isBlocked: boolean) => {
+    const handleBlockUser = async (userId: string, isBlocked: boolean, userEmail: string) => {
+        if (isBlocked) {
+            // Restore immediately
+            setUpdatingUserId(userId);
+            try {
+                await api.patch(`/api/admin/user/${userId}/block`, { duration: null });
+                setSearchResults((prev: any[]) => prev.map(u => u.id === userId ? { ...u, status: 'active' } : u));
+                alert("User restored successfully.");
+            } catch (err) {
+                alert("Failed to restore user.");
+            } finally {
+                setUpdatingUserId(null);
+            }
+        } else {
+            // Open modal to choose duration
+            setBlockModal({
+                isOpen: true,
+                userId,
+                userEmail
+            });
+        }
+    };
+
+    const handleConfirmBlock = async (duration: string) => {
+        const { userId } = blockModal;
         setUpdatingUserId(userId);
+        setBlockModal((prev: any) => ({ ...prev, isOpen: false }));
+
         try {
-            await api.patch(`/api/admin/user/${userId}/block`, { blocked: !isBlocked });
-            setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, status: isBlocked ? 'active' : 'blocked' } : u));
+            await api.patch(`/api/admin/user/${userId}/block`, { duration });
+            setSearchResults((prev: any[]) => prev.map(u => u.id === userId ? { ...u, status: 'blocked' } : u));
+            alert(`User blocked for ${duration}.`);
         } catch (err) {
-            alert("Failed to update user status");
+            alert("Failed to block user.");
         } finally {
             setUpdatingUserId(null);
         }
@@ -298,8 +386,8 @@ export default function AdminDashboard() {
                                             <td className="py-4 pl-4 text-right">
                                                 <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <button
-                                                        onClick={() => handleBlockUser(user.id, user.status === 'blocked')}
-                                                        disabled={updatingUserId === user.id || user.role === 'super_user'}
+                                                        onClick={() => handleBlockUser(user.id, user.status === 'blocked', user.email)}
+                                                        disabled={updatingUserId === user.id || (user.role === 'super_user') || (currentUser?.role === 'admin' && user.role === 'admin')}
                                                         className={`p-2 rounded-lg transition ${user.status === 'blocked' ? 'text-green-600 hover:bg-green-50' : 'text-red-600 hover:bg-red-50 disabled:opacity-30'}`}
                                                         title={user.status === 'blocked' ? 'Restore User' : 'Block User'}
                                                     >
@@ -342,6 +430,13 @@ export default function AdminDashboard() {
                 targetRole={modalConfig.targetRole}
                 userEmail={modalConfig.userEmail}
                 isSuperUser={currentUser?.role === 'super_user'}
+            />
+
+            <BlockDurationModal
+                isOpen={blockModal.isOpen}
+                onClose={() => setBlockModal(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={handleConfirmBlock}
+                userEmail={blockModal.userEmail}
             />
         </div>
     );

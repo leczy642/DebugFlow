@@ -13,6 +13,57 @@ import {
     XMarkIcon
 } from "@heroicons/react/24/outline";
 
+// --- BLOCK DURATION MODAL ---
+function BlockDurationModal({ isOpen, onClose, onConfirm, userEmail }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: (duration: string) => void;
+    userEmail: string;
+}) {
+    const durations = [
+        { label: '24 Hours', value: '24h' },
+        { label: '1 Week', value: '1w' },
+        { label: '1 Month', value: '1m' },
+        { label: '3 Months', value: '3m' },
+    ];
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl border border-gray-100 p-8">
+                <div className="flex items-center gap-3 text-red-600 mb-6">
+                    <NoSymbolIcon className="w-8 h-8" />
+                    <h3 className="text-xl font-bold text-gray-900">Block User</h3>
+                </div>
+
+                <p className="text-sm text-gray-500 mb-8">
+                    Select a block duration for <span className="font-semibold text-gray-900">{userEmail}</span>.
+                </p>
+
+                <div className="space-y-3 mb-8">
+                    {durations.map((d) => (
+                        <button
+                            key={d.value}
+                            onClick={() => onConfirm(d.value)}
+                            className="w-full py-3 px-4 rounded-xl border border-gray-200 text-left font-medium text-gray-700 hover:border-red-500 hover:bg-red-50 transition-colors"
+                        >
+                            {d.label}
+                        </button>
+                    ))}
+                </div>
+
+                <button
+                    onClick={onClose}
+                    className="w-full py-3 rounded-xl font-medium text-gray-500 hover:bg-gray-100 transition"
+                >
+                    Cancel
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // --- CONFIRMATION MODAL ---
 function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confirmText, confirmVariant = 'blue' }: {
     isOpen: boolean;
@@ -88,6 +139,15 @@ export default function SuperUserPanel() {
         confirmVariant: 'blue',
         onConfirm: () => { }
     });
+    const [blockModal, setBlockModal] = useState<{
+        isOpen: boolean;
+        userId: string;
+        userEmail: string;
+    }>({
+        isOpen: false,
+        userId: "",
+        userEmail: ""
+    });
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -158,7 +218,16 @@ export default function SuperUserPanel() {
         });
     };
 
-    const handleUpdateStatus = async (userId: string, userEmail: string, targetStatus: 'active' | 'banned') => {
+    const handleUpdateStatus = async (userId: string, userEmail: string, targetStatus: 'active' | 'banned' | 'blocked') => {
+        if (targetStatus === 'blocked') {
+            setBlockModal({
+                isOpen: true,
+                userId,
+                userEmail
+            });
+            return;
+        }
+
         setConfirmConfig({
             isOpen: true,
             title: targetStatus === 'banned' ? "Ban User" : "Restore User",
@@ -181,6 +250,25 @@ export default function SuperUserPanel() {
                 }
             }
         });
+    };
+
+    const handleConfirmBlock = async (duration: string) => {
+        const { userId } = blockModal;
+        setUpdatingUserId(userId);
+        setBlockModal(prev => ({ ...prev, isOpen: false }));
+
+        try {
+            await api.patch(`/api/super-user/user/${userId}/status`, { status: 'blocked', duration });
+            if (searchResults.length > 0) {
+                setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, status: 'blocked' } : u));
+            }
+            await fetchData();
+            alert(`User blocked for ${duration}`);
+        } catch (err) {
+            alert("Failed to block user");
+        } finally {
+            setUpdatingUserId(null);
+        }
     };
 
     useEffect(() => {
@@ -320,7 +408,8 @@ export default function SuperUserPanel() {
                                             <td className="py-4 px-4 text-center">
                                                 <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${user.status === 'active' ? 'bg-green-100 text-green-700' :
                                                     user.status === 'banned' ? 'bg-red-100 text-red-700' :
-                                                        'bg-gray-100 text-gray-700'
+                                                        user.status === 'blocked' ? 'bg-orange-100 text-orange-700' :
+                                                            'bg-gray-100 text-gray-700'
                                                     }`}>
                                                     {user.status}
                                                 </span>
@@ -351,14 +440,35 @@ export default function SuperUserPanel() {
 
                                                     {/* STATUS ACTIONS */}
                                                     {user.role !== 'super_user' && (
-                                                        <button
-                                                            onClick={() => handleUpdateStatus(user.id, user.email, user.status === 'banned' ? 'active' : 'banned')}
-                                                            disabled={!!updatingUserId}
-                                                            className={`p-2 rounded-lg transition ${user.status === 'banned' ? 'text-green-600 hover:bg-green-50' : 'text-red-600 hover:bg-red-50 disabled:opacity-30'}`}
-                                                            title={user.status === 'banned' ? 'Restore User' : 'Ban User'}
-                                                        >
-                                                            {user.status === 'banned' ? <CheckCircleIcon className="w-5 h-5" /> : <NoSymbolIcon className="w-5 h-5" />}
-                                                        </button>
+                                                        <>
+                                                            {user.status === 'active' ? (
+                                                                <button
+                                                                    onClick={() => handleUpdateStatus(user.id, user.email, 'blocked')}
+                                                                    disabled={!!updatingUserId}
+                                                                    className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition disabled:opacity-30"
+                                                                    title="Block User"
+                                                                >
+                                                                    <NoSymbolIcon className="w-5 h-5" />
+                                                                </button>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => handleUpdateStatus(user.id, user.email, 'active')}
+                                                                    disabled={!!updatingUserId}
+                                                                    className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-30"
+                                                                    title="Restore User"
+                                                                >
+                                                                    <CheckCircleIcon className="w-5 h-5" />
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={() => handleUpdateStatus(user.id, user.email, user.status === 'banned' ? 'active' : 'banned')}
+                                                                disabled={!!updatingUserId}
+                                                                className={`p-2 rounded-lg transition ${user.status === 'banned' ? 'text-green-600 hover:bg-green-50' : 'text-red-600 hover:bg-red-50 disabled:opacity-30'}`}
+                                                                title={user.status === 'banned' ? 'Restore User' : 'Ban User'}
+                                                            >
+                                                                {user.status === 'banned' ? <CheckCircleIcon className="w-5 h-5" /> : <ShieldCheckIcon className="w-5 h-5" />}
+                                                            </button>
+                                                        </>
                                                     )}
                                                 </div>
                                             </td>
@@ -385,6 +495,13 @@ export default function SuperUserPanel() {
                 message={confirmConfig.message}
                 confirmText={confirmConfig.confirmText}
                 confirmVariant={confirmConfig.confirmVariant}
+            />
+
+            <BlockDurationModal
+                isOpen={blockModal.isOpen}
+                onClose={() => setBlockModal(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={handleConfirmBlock}
+                userEmail={blockModal.userEmail}
             />
         </div>
     );

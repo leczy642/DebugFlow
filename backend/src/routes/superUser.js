@@ -95,21 +95,37 @@ router.patch("/user/:id/role", async (req, res) => {
  */
 router.patch("/user/:id/status", async (req, res) => {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, duration } = req.body;
 
-    if (!['active', 'banned'].includes(status)) {
+    if (!['active', 'banned', 'blocked'].includes(status)) {
         return res.status(400).json({ error: "Invalid status for Super User action" });
     }
 
     try {
         if (id === req.user.uid) {
-            return res.status(400).json({ error: "You cannot ban yourself" });
+            return res.status(400).json({ error: "You cannot change your own status" });
         }
 
-        await updateUserStatus(id, status);
-        await logAuditEvent(req.user.uid, id, status === 'banned' ? 'USER_BAN' : 'USER_UNBAN', { status });
+        let expiresAt = null;
+        if (status === 'blocked' && duration) {
+            const now = new Date();
+            if (duration === '24h') expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+            else if (duration === '1w') expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+            else if (duration === '1m') expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+            else if (duration === '3m') expiresAt = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+            else return res.status(400).json({ error: "Invalid duration" });
+        }
 
-        res.json({ success: true, status });
+        if (status === 'blocked' || status === 'active') {
+            await updateUserBlock(id, status, expiresAt);
+        } else {
+            // 'banned' or other direct status changes
+            await updateUserStatus(id, status);
+        }
+
+        await logAuditEvent(req.user.uid, id, `USER_${status.toUpperCase()}`, { status, duration, expiresAt });
+
+        res.json({ success: true, status, expiresAt });
     } catch (err) {
         logger.error("User Status Update Failed", { error: err.message });
         res.status(500).json({ error: "Failed to update user status" });

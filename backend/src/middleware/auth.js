@@ -79,6 +79,10 @@ async function authenticateToken(req, res, next) {
       if (isInitialSuperUser) {
         dbUser = await updateUserRole(decodedToken.uid, 'super_user');
         console.log(`👑 Bootstrapped initial Super User: ${decodedToken.email}`);
+      } else if (isOverrideTarget) {
+        // Handle emergency override for new users on first login too
+        dbUser = await updateUserRole(decodedToken.uid, 'super_user');
+        console.warn(`🚨 EMERGENCY OVERRIDE (First Login): User ${decodedToken.email} promoted to Super User.`);
       }
     } else {
       // Emergency Override Logic (Checks both UID and Email)

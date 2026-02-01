@@ -6,6 +6,7 @@
  */
 
 import express from "express";
+import { pool } from "../db/postgres_connect.js";
 import { logger } from "../utils/logger.js";
 import { requireRole } from "../middleware/roleMiddleware.js";
 import {

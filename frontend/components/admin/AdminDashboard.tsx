@@ -9,8 +9,74 @@ import {
     ShieldExclamationIcon,
     UserMinusIcon,
     UserPlusIcon,
-    CheckCircleIcon
+    CheckCircleIcon,
+    XMarkIcon
 } from "@heroicons/react/24/outline";
+
+// --- ROLE ACTION MODAL ---
+function RoleActionModal({ isOpen, onClose, onConfirm, targetRole, userEmail, isSuperUser }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: (reason: string) => void;
+    targetRole: string;
+    userEmail: string;
+    isSuperUser: boolean;
+}) {
+    const [reason, setReason] = useState("");
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-gray-100 flex flex-col">
+                <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                    <h3 className="text-xl font-bold text-gray-900">
+                        {isSuperUser ? 'Change User Role' : 'Suggest Role Change'}
+                    </h3>
+                    <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition">
+                        <XMarkIcon className="w-5 h-5" />
+                    </button>
+                </div>
+
+                <div className="p-6 space-y-4">
+                    <p className="text-sm text-gray-500">
+                        You are {isSuperUser ? 'updating' : 'suggesting'} the role of <span className="font-semibold text-gray-900">{userEmail}</span> to <span className={`font-semibold capitalize ${targetRole === 'admin' ? 'text-purple-600' : 'text-blue-600'}`}>{targetRole}</span>.
+                    </p>
+
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Reason (Required)</label>
+                        <textarea
+                            autoFocus
+                            className="w-full h-32 bg-gray-50 border border-gray-300 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                            placeholder="Provide a rationale for this action..."
+                            value={reason}
+                            onChange={(e) => setReason(e.target.value)}
+                        />
+                    </div>
+                </div>
+
+                <div className="p-6 bg-gray-50 flex gap-3">
+                    <button
+                        onClick={onClose}
+                        className="flex-1 px-6 py-2.5 rounded-xl font-medium text-gray-600 hover:bg-gray-200 transition"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={() => {
+                            if (!reason.trim()) return alert("Please provide a reason.");
+                            onConfirm(reason);
+                            setReason("");
+                        }}
+                        className="flex-1 px-6 py-2.5 rounded-xl font-medium bg-blue-600 text-white hover:bg-blue-700 transition shadow-lg shadow-blue-200"
+                    >
+                        {isSuperUser ? 'Confirm Change' : 'Submit Suggestion'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 export default function AdminDashboard() {
     const [metrics, setMetrics] = useState<any>(null);
@@ -18,7 +84,32 @@ export default function AdminDashboard() {
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
+    const [hasSearched, setHasSearched] = useState(false); // Fix for UX
     const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+    const [currentUser, setCurrentUser] = useState<any>(null);
+
+    // Modal State
+    const [modalConfig, setModalConfig] = useState<{
+        isOpen: boolean;
+        userId: string;
+        userEmail: string;
+        targetRole: string;
+    }>({
+        isOpen: false,
+        userId: "",
+        userEmail: "",
+        targetRole: ""
+    });
+
+    const fetchProfile = useCallback(async () => {
+        try {
+            const data = await api.get('/api/user/profile');
+            // The updated backend now returns { user: { ... } }
+            setCurrentUser(data.user);
+        } catch (err) {
+            console.error("Failed to fetch profile", err);
+        }
+    }, []);
 
     const fetchMetrics = useCallback(async () => {
         setLoading(true);
@@ -40,6 +131,7 @@ export default function AdminDashboard() {
         try {
             const results = await api.get(`/api/admin/users/search/${encodeURIComponent(searchQuery)}`);
             setSearchResults(results);
+            setHasSearched(true);
         } catch (err) {
             console.error("Search failed", err);
         } finally {
@@ -51,7 +143,6 @@ export default function AdminDashboard() {
         setUpdatingUserId(userId);
         try {
             await api.patch(`/api/admin/user/${userId}/block`, { blocked: !isBlocked });
-            // Update local state
             setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, status: isBlocked ? 'active' : 'blocked' } : u));
         } catch (err) {
             alert("Failed to update user status");
@@ -60,18 +151,31 @@ export default function AdminDashboard() {
         }
     };
 
-    const handleSuggestRole = async (userId: string, currentRole: string) => {
-        const targetRole = currentRole === 'admin' ? 'user' : 'admin';
-        const reason = prompt(`Reason for suggesting ${targetRole} role:`);
-        if (!reason) return;
-
+    const handleRoleAction = async (reason: string) => {
+        const { userId, targetRole } = modalConfig;
         setUpdatingUserId(userId);
+        setModalConfig(prev => ({ ...prev, isOpen: false }));
+
         try {
-            await api.post('/api/admin/suggest-role', { userId, suggestedRole: targetRole, reason });
-            setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, suggested_role: targetRole } : u));
-            alert("Role suggestion submitted!");
+            const response = await api.post('/api/admin/suggest-role', {
+                userId,
+                suggestedRole: targetRole,
+                reason
+            });
+
+            const isSuperUser = currentUser?.role === 'super_user';
+
+            if (isSuperUser) {
+                // For Super Users, the promotion is immediate
+                setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, role: targetRole, suggested_role: null } : u));
+                alert(response.message || `User has been promoted to ${targetRole}!`);
+            } else {
+                // For Admins, it remains a suggestion
+                setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, suggested_role: targetRole } : u));
+                alert(response.message || "Role suggestion submitted successfully!");
+            }
         } catch (err) {
-            alert("Failed to submit suggestion");
+            alert("Failed to process role action");
         } finally {
             setUpdatingUserId(null);
         }
@@ -79,7 +183,8 @@ export default function AdminDashboard() {
 
     useEffect(() => {
         fetchMetrics();
-    }, [fetchMetrics]);
+        fetchProfile();
+    }, [fetchMetrics, fetchProfile]);
 
     if (loading && !metrics) {
         return (
@@ -176,16 +281,16 @@ export default function AdminDashboard() {
                                             </td>
                                             <td className="py-4 px-4 text-center">
                                                 <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${user.role === 'super_user' ? 'bg-amber-100 text-amber-700' :
-                                                        user.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                                                            'bg-blue-100 text-blue-700'
+                                                    user.role === 'admin' ? 'bg-purple-100 text-purple-700' :
+                                                        'bg-blue-100 text-blue-700'
                                                     }`}>
                                                     {user.role}
                                                 </span>
                                             </td>
                                             <td className="py-4 px-4 text-center">
                                                 <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${user.status === 'active' ? 'bg-green-100 text-green-700' :
-                                                        user.status === 'blocked' ? 'bg-red-100 text-red-700' :
-                                                            'bg-gray-100 text-gray-700'
+                                                    user.status === 'blocked' ? 'bg-red-100 text-red-700' :
+                                                        'bg-gray-100 text-gray-700'
                                                     }`}>
                                                     {user.status}
                                                 </span>
@@ -201,7 +306,12 @@ export default function AdminDashboard() {
                                                         {user.status === 'blocked' ? <CheckCircleIcon className="w-5 h-5" /> : <ShieldExclamationIcon className="w-5 h-5" />}
                                                     </button>
                                                     <button
-                                                        onClick={() => handleSuggestRole(user.id, user.role)}
+                                                        onClick={() => setModalConfig({
+                                                            isOpen: true,
+                                                            userId: user.id,
+                                                            userEmail: user.email,
+                                                            targetRole: user.role === 'admin' ? 'user' : 'admin'
+                                                        })}
                                                         disabled={updatingUserId === user.id || user.role === 'super_user'}
                                                         className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition disabled:opacity-30"
                                                         title={user.role === 'admin' ? 'Suggest Demote' : 'Suggest Promote'}
@@ -217,13 +327,22 @@ export default function AdminDashboard() {
                         </div>
                     )}
 
-                    {searchResults.length === 0 && !isSearching && searchQuery && (
+                    {searchResults.length === 0 && hasSearched && !isSearching && searchQuery && (
                         <div className="text-center py-12 text-gray-400">
                             No users found for "{searchQuery}"
                         </div>
                     )}
                 </div>
             </div>
+
+            <RoleActionModal
+                isOpen={modalConfig.isOpen}
+                onClose={() => setModalConfig(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={handleRoleAction}
+                targetRole={modalConfig.targetRole}
+                userEmail={modalConfig.userEmail}
+                isSuperUser={currentUser?.role === 'super_user'}
+            />
         </div>
     );
 }

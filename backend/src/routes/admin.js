@@ -111,6 +111,7 @@ router.patch("/user/:id/block", async (req, res) => {
 /**
  * POST /api/admin/suggest-role
  * Suggests a role change (promotion/demotion) for a user.
+ * If requester is a Super User, applies it immediately.
  */
 router.post("/suggest-role", async (req, res) => {
     const { userId, suggestedRole, reason } = req.body;
@@ -123,13 +124,28 @@ router.post("/suggest-role", async (req, res) => {
         const targetUser = await getUserById(userId);
         if (!targetUser) return res.status(404).json({ error: "User not found" });
 
-        await setUserSuggestion(userId, suggestedRole, reason);
-        await logAuditEvent(req.user.uid, userId, 'ROLE_SUGGESTION', { suggestedRole, reason });
+        const requesterRole = req.user.role?.toLowerCase();
 
-        res.json({ success: true, message: `Suggestion for ${suggestedRole} submitted.` });
+        logger.info("Role action requested", {
+            requesterId: req.user.uid,
+            requesterRole,
+            targetId: userId,
+            targetEmail: targetUser.email,
+            suggestedRole
+        });
+
+        if (requesterRole === 'super_user') {
+            await updateUserRole(userId, suggestedRole);
+            await logAuditEvent(req.user.uid, userId, 'ROLE_CHANGE_ADMIN', { role: suggestedRole, reason });
+            return res.json({ success: true, message: `User ${targetUser.email} has been promoted to ${suggestedRole} immediately.` });
+        } else {
+            await setUserSuggestion(userId, suggestedRole, reason);
+            await logAuditEvent(req.user.uid, userId, 'ROLE_SUGGESTION', { suggestedRole, reason });
+            return res.json({ success: true, message: `Suggestion for ${suggestedRole} submitted.` });
+        }
     } catch (err) {
-        logger.error("Role Suggestion Failed", { error: err.message });
-        res.status(500).json({ error: "Failed to submit role suggestion" });
+        logger.error("Role action processing failed", { error: err.message });
+        res.status(500).json({ error: "Failed to process role action" });
     }
 });
 

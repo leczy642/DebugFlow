@@ -9,8 +9,55 @@ import {
     MagnifyingGlassIcon,
     UserMinusIcon,
     NoSymbolIcon,
-    CheckCircleIcon
+    CheckCircleIcon,
+    XMarkIcon
 } from "@heroicons/react/24/outline";
+
+// --- CONFIRMATION MODAL ---
+function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confirmText, confirmVariant = 'blue' }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: () => void;
+    title: string;
+    message: string;
+    confirmText: string;
+    confirmVariant?: 'blue' | 'red' | 'green';
+}) {
+    if (!isOpen) return null;
+
+    const variantClasses = {
+        blue: 'bg-blue-600 hover:bg-blue-700 shadow-blue-200',
+        red: 'bg-red-600 hover:bg-red-700 shadow-red-200',
+        green: 'bg-green-600 hover:bg-green-700 shadow-green-200'
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden border border-gray-100 flex flex-col">
+                <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                    <h3 className="text-xl font-bold text-gray-900">{title}</h3>
+                    <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition">
+                        <XMarkIcon className="w-5 h-5" />
+                    </button>
+                </div>
+                <div className="p-6">
+                    <p className="text-sm text-gray-500 leading-relaxed">{message}</p>
+                </div>
+                <div className="p-6 bg-gray-50 flex gap-3">
+                    <button onClick={onClose} className="flex-1 px-6 py-2.5 rounded-xl font-medium text-gray-600 hover:bg-gray-200 transition">
+                        Cancel
+                    </button>
+                    <button
+                        onClick={() => { onConfirm(); onClose(); }}
+                        className={`flex-1 px-6 py-2.5 rounded-xl font-medium text-white transition shadow-lg ${variantClasses[confirmVariant]}`}
+                    >
+                        {confirmText}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 export default function SuperUserPanel() {
     const [admins, setAdmins] = useState<any[]>([]);
@@ -22,7 +69,25 @@ export default function SuperUserPanel() {
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
+    const [hasSearched, setHasSearched] = useState(false);
     const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+
+    // Modal State
+    const [confirmConfig, setConfirmConfig] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        confirmText: string;
+        confirmVariant: 'blue' | 'red' | 'green';
+        onConfirm: () => void;
+    }>({
+        isOpen: false,
+        title: "",
+        message: "",
+        confirmText: "",
+        confirmVariant: 'blue',
+        onConfirm: () => { }
+    });
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -60,6 +125,7 @@ export default function SuperUserPanel() {
         try {
             const results = await api.get(`/api/super-user/users/search/${encodeURIComponent(searchQuery)}`);
             setSearchResults(results);
+            setHasSearched(true);
         } catch (err) {
             console.error("Search failed", err);
         } finally {
@@ -67,42 +133,54 @@ export default function SuperUserPanel() {
         }
     };
 
-    const handleUpdateRole = async (userId: string, targetRole: 'admin' | 'user') => {
-        if (!confirm(`Are you sure you want to change this user's role to ${targetRole}?`)) return;
-
-        setUpdatingUserId(userId);
-        try {
-            await api.patch(`/api/super-user/user/${userId}/role`, { role: targetRole });
-            // Refresh administration list and search results
-            await fetchData();
-            if (searchResults.length > 0) {
-                setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, role: targetRole } : u));
+    const handleUpdateRole = async (userId: string, userEmail: string, targetRole: 'admin' | 'user') => {
+        setConfirmConfig({
+            isOpen: true,
+            title: targetRole === 'admin' ? "Promote User" : "Demote User",
+            message: `Are you sure you want to change the role of ${userEmail} to ${targetRole}?`,
+            confirmText: targetRole === 'admin' ? "Promote" : "Demote",
+            confirmVariant: targetRole === 'admin' ? 'blue' : 'red',
+            onConfirm: async () => {
+                setUpdatingUserId(userId);
+                try {
+                    await api.patch(`/api/super-user/user/${userId}/role`, { role: targetRole });
+                    await fetchData();
+                    if (searchResults.length > 0) {
+                        setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, role: targetRole } : u));
+                    }
+                    alert(`User role updated to ${targetRole}`);
+                } catch (err) {
+                    alert("Failed to update role");
+                } finally {
+                    setUpdatingUserId(null);
+                }
             }
-            alert(`User role updated to ${targetRole}`);
-        } catch (err) {
-            alert("Failed to update role");
-        } finally {
-            setUpdatingUserId(null);
-        }
+        });
     };
 
-    const handleUpdateStatus = async (userId: string, targetStatus: 'active' | 'banned') => {
-        if (!confirm(`Are you sure you want to set this user's status to ${targetStatus}?`)) return;
-
-        setUpdatingUserId(userId);
-        try {
-            await api.patch(`/api/super-user/user/${userId}/status`, { status: targetStatus });
-            // Refresh results
-            if (searchResults.length > 0) {
-                setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, status: targetStatus } : u));
+    const handleUpdateStatus = async (userId: string, userEmail: string, targetStatus: 'active' | 'banned') => {
+        setConfirmConfig({
+            isOpen: true,
+            title: targetStatus === 'banned' ? "Ban User" : "Restore User",
+            message: `Are you sure you want to ${targetStatus === 'banned' ? 'ban' : 'restore'} account ${userEmail}?`,
+            confirmText: targetStatus === 'banned' ? "Ban Account" : "Restore Account",
+            confirmVariant: targetStatus === 'banned' ? 'red' : 'green',
+            onConfirm: async () => {
+                setUpdatingUserId(userId);
+                try {
+                    await api.patch(`/api/super-user/user/${userId}/status`, { status: targetStatus });
+                    if (searchResults.length > 0) {
+                        setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, status: targetStatus } : u));
+                    }
+                    await fetchData();
+                    alert(`User status updated to ${targetStatus}`);
+                } catch (err) {
+                    alert("Failed to update status");
+                } finally {
+                    setUpdatingUserId(null);
+                }
             }
-            await fetchData();
-            alert(`User status updated to ${targetStatus}`);
-        } catch (err) {
-            alert("Failed to update status");
-        } finally {
-            setUpdatingUserId(null);
-        }
+        });
     };
 
     useEffect(() => {
@@ -175,7 +253,7 @@ export default function SuperUserPanel() {
 
                                     {admin.role === 'admin' && (
                                         <button
-                                            onClick={() => handleUpdateRole(admin.id, 'user')}
+                                            onClick={() => handleUpdateRole(admin.id, admin.email, 'user')}
                                             disabled={!!updatingUserId}
                                             className="text-gray-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition opacity-0 group-hover:opacity-100"
                                             title="Demote to User"
@@ -233,16 +311,16 @@ export default function SuperUserPanel() {
                                             </td>
                                             <td className="py-4 px-4 text-center">
                                                 <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${user.role === 'super_user' ? 'bg-amber-100 text-amber-700' :
-                                                        user.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                                                            'bg-blue-100 text-blue-700'
+                                                    user.role === 'admin' ? 'bg-purple-100 text-purple-700' :
+                                                        'bg-blue-100 text-blue-700'
                                                     }`}>
                                                     {user.role}
                                                 </span>
                                             </td>
                                             <td className="py-4 px-4 text-center">
                                                 <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${user.status === 'active' ? 'bg-green-100 text-green-700' :
-                                                        user.status === 'banned' ? 'bg-red-100 text-red-700' :
-                                                            'bg-gray-100 text-gray-700'
+                                                    user.status === 'banned' ? 'bg-red-100 text-red-700' :
+                                                        'bg-gray-100 text-gray-700'
                                                     }`}>
                                                     {user.status}
                                                 </span>
@@ -252,7 +330,7 @@ export default function SuperUserPanel() {
                                                     {/* ROLE ACTIONS */}
                                                     {user.role === 'user' && (
                                                         <button
-                                                            onClick={() => handleUpdateRole(user.id, 'admin')}
+                                                            onClick={() => handleUpdateRole(user.id, user.email, 'admin')}
                                                             disabled={!!updatingUserId}
                                                             className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition disabled:opacity-30"
                                                             title="Promote to Admin"
@@ -262,7 +340,7 @@ export default function SuperUserPanel() {
                                                     )}
                                                     {user.role === 'admin' && (
                                                         <button
-                                                            onClick={() => handleUpdateRole(user.id, 'user')}
+                                                            onClick={() => handleUpdateRole(user.id, user.email, 'user')}
                                                             disabled={!!updatingUserId}
                                                             className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition disabled:opacity-30"
                                                             title="Demote to User"
@@ -274,7 +352,7 @@ export default function SuperUserPanel() {
                                                     {/* STATUS ACTIONS */}
                                                     {user.role !== 'super_user' && (
                                                         <button
-                                                            onClick={() => handleUpdateStatus(user.id, user.status === 'banned' ? 'active' : 'banned')}
+                                                            onClick={() => handleUpdateStatus(user.id, user.email, user.status === 'banned' ? 'active' : 'banned')}
                                                             disabled={!!updatingUserId}
                                                             className={`p-2 rounded-lg transition ${user.status === 'banned' ? 'text-green-600 hover:bg-green-50' : 'text-red-600 hover:bg-red-50 disabled:opacity-30'}`}
                                                             title={user.status === 'banned' ? 'Restore User' : 'Ban User'}
@@ -291,13 +369,23 @@ export default function SuperUserPanel() {
                         </div>
                     )}
 
-                    {searchResults.length === 0 && !isSearching && searchQuery && (
+                    {searchResults.length === 0 && hasSearched && !isSearching && searchQuery && (
                         <div className="text-center py-12 text-gray-400">
                             No users found for "{searchQuery}"
                         </div>
                     )}
                 </div>
             </div>
+
+            <ConfirmModal
+                isOpen={confirmConfig.isOpen}
+                onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={confirmConfig.onConfirm}
+                title={confirmConfig.title}
+                message={confirmConfig.message}
+                confirmText={confirmConfig.confirmText}
+                confirmVariant={confirmConfig.confirmVariant}
+            />
         </div>
     );
 }

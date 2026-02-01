@@ -31,6 +31,29 @@ router.get('/profile', async (req, res) => {
 });
 
 /**
+ * GET /api/user/profile/full
+ * Returns full user profile including role, status, and permissions
+ */
+router.get('/profile/full', async (req, res) => {
+    try {
+        const userId = req.user.uid;
+        const { rows: [user] } = await pool.query(
+            `SELECT id, email, name, role, status, permissions, global_instructions FROM users WHERE id = $1`,
+            [userId]
+        );
+
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        res.json(user);
+    } catch (err) {
+        logger.error("Failed to fetch full user profile", { error: err.message });
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+/**
  * PATCH /api/user/profile
  * Updates global instructions
  */

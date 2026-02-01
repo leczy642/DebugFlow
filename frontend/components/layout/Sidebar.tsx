@@ -54,6 +54,8 @@ import {
     FolderIcon,
     ChevronRightIcon,
     ChevronDownIcon,
+    ShieldCheckIcon,
+    UserGroupIcon,
 } from "@heroicons/react/24/outline";
 import {
     BookmarkIcon as BookmarkIconSolid,
@@ -71,9 +73,10 @@ export default function Sidebar() {
     const {
         sidebarOpen, toggleSidebar, centerInput, dockInput, inputBarCentered,
         openRenameSession, openDeleteSession, openAddToProject,
-        openRenameProject, openDeleteProject
+        openRenameProject, openDeleteProject,
+        activeView, setView
     } = useUIStore();
-    const { user } = useAuth();
+    const { user, isAdmin, isSuperUser } = useAuth();
 
     const firstName = user?.displayName ? user.displayName.split(' ')[0] : 'User';
 
@@ -96,13 +99,18 @@ export default function Sidebar() {
 
     const handleNewSession = () => {
         // If already in the default centered mode (no project selected), do nothing
-        if (inputBarCentered && !selectedProjectId) return;
+        if (inputBarCentered && !selectedProjectId) {
+            setView('chat');
+            return;
+        }
 
+        setView('chat');
         centerInput();
         resetToDefault();
     };
 
     const handleHeaderClick = () => {
+        setView('chat');
         if (inputBarCentered) return;
         centerInput();
         resetToDefault();
@@ -130,6 +138,7 @@ export default function Sidebar() {
     const [historyListExpanded, setHistoryListExpanded] = useState(true);
 
     const handleProjectClick = (projectId: string) => {
+        setView('chat');
         selectProject(projectId);
         centerInput();
     };
@@ -307,7 +316,10 @@ export default function Sidebar() {
                 )}
 
                 <a
-                    onClick={() => selectSession(session.id)}
+                    onClick={() => {
+                        setView('chat');
+                        selectSession(session.id);
+                    }}
                     className={`block cursor-pointer px-3 py-2.5 text-sm flex items-center min-w-0 flex-1 ${isActive ? "text-blue-700" : "text-[#1A1A1A]"}`}
                 >
                     <span className="font-medium truncate" title={isTruncated ? session.title : undefined}>
@@ -378,6 +390,31 @@ export default function Sidebar() {
                                 New Project
                             </span>
                         </button>
+                    </div>
+                )}
+
+                {/* ROLE-BASED NAVIGATION */}
+                {sidebarOpen && (isAdmin || isSuperUser) && (
+                    <div className="px-3 py-2 space-y-1 border-t border-gray-100 mt-2 pt-2">
+                        {isAdmin && (
+                            <button
+                                onClick={() => setView('admin_dashboard')}
+                                className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-all duration-200 flex items-center gap-2 ${activeView === 'admin_dashboard' ? 'bg-[#e4edfd] text-blue-700 font-medium' : 'text-[#606060] hover:text-[#1A1A1A] hover:bg-[#EAEAEA]'}`}
+                            >
+                                <ShieldCheckIcon className="w-4 h-4 flex-shrink-0" />
+                                <span>Admin Dashboard</span>
+                            </button>
+                        )}
+
+                        {isSuperUser && (
+                            <button
+                                onClick={() => setView('super_user_panel')}
+                                className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-all duration-200 flex items-center gap-2 ${activeView === 'super_user_panel' ? 'bg-[#e4edfd] text-blue-700 font-medium' : 'text-[#606060] hover:text-[#1A1A1A] hover:bg-[#EAEAEA]'}`}
+                            >
+                                <UserGroupIcon className="w-4 h-4 flex-shrink-0" />
+                                <span>Super User Panel</span>
+                            </button>
+                        )}
                     </div>
                 )}
 

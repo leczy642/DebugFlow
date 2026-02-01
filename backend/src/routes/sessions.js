@@ -13,6 +13,7 @@
  */
 //routes/sessions.js
 import express from "express";
+import { requireNotBlocked } from "../middleware/roleMiddleware.js";
 import {
   getAllSessions,
   createSession,
@@ -53,7 +54,7 @@ router.get("/", async (req, res) => {
  *   Success (200): Session
  *   Error (500): { error: string } - Failed to create session
  */
-router.post("/", async (req, res) => {
+router.post("/", requireNotBlocked, async (req, res) => {
   const { uid } = req.user;
   const { project_id } = req.body;
   const session = await createSession(uid, project_id);

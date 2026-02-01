@@ -12,6 +12,10 @@ type UIStore = {
   centerInput: () => void;
   dockInput: () => void;
 
+  // View state
+  activeView: 'chat' | 'admin_dashboard' | 'super_user_panel';
+  setView: (view: 'chat' | 'admin_dashboard' | 'super_user_panel') => void;
+
   // Modal states
   renameSessionModal: { isOpen: boolean; sessionId: string; title: string };
   deleteSessionModal: { isOpen: boolean; sessionId: string; title: string };
@@ -40,6 +44,9 @@ export const useUIStore = create<UIStore>((set) => ({
   setInputBarCentered: (value) => set({ inputBarCentered: value }),
   centerInput: () => set({ inputBarCentered: true }),
   dockInput: () => set({ inputBarCentered: false }),
+
+  activeView: 'chat',
+  setView: (view) => set({ activeView: view }),
 
   renameSessionModal: { isOpen: false, sessionId: "", title: "" },
   openRenameSession: (sessionId, title) => set({ renameSessionModal: { isOpen: true, sessionId, title } }),

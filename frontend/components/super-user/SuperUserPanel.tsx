@@ -1,0 +1,303 @@
+"use client";
+import { useEffect, useState, useCallback } from "react";
+import { api } from "@/lib/api";
+import {
+    GlobeAltIcon,
+    UserPlusIcon,
+    ShieldCheckIcon,
+    ArrowRightCircleIcon,
+    MagnifyingGlassIcon,
+    UserMinusIcon,
+    NoSymbolIcon,
+    CheckCircleIcon
+} from "@heroicons/react/24/outline";
+
+export default function SuperUserPanel() {
+    const [admins, setAdmins] = useState<any[]>([]);
+    const [globalContext, setGlobalContext] = useState("");
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+
+    // Search State
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        try {
+            const [adminsData, contextData] = await Promise.all([
+                api.get('/api/super-user/admins'),
+                api.get('/api/super-user/global-context')
+            ]);
+            setAdmins(adminsData);
+            setGlobalContext(contextData.content || "");
+        } catch (err) {
+            console.error("Failed to fetch super user data", err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    const handleSaveGlobalContext = async () => {
+        setSaving(true);
+        try {
+            await api.post('/api/super-user/global-context', { content: globalContext });
+            alert("Super Global Context Updated!");
+        } catch (err) {
+            alert("Failed to update context");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleSearch = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!searchQuery.trim()) return;
+
+        setIsSearching(true);
+        try {
+            const results = await api.get(`/api/super-user/users/search/${encodeURIComponent(searchQuery)}`);
+            setSearchResults(results);
+        } catch (err) {
+            console.error("Search failed", err);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    const handleUpdateRole = async (userId: string, targetRole: 'admin' | 'user') => {
+        if (!confirm(`Are you sure you want to change this user's role to ${targetRole}?`)) return;
+
+        setUpdatingUserId(userId);
+        try {
+            await api.patch(`/api/super-user/user/${userId}/role`, { role: targetRole });
+            // Refresh administration list and search results
+            await fetchData();
+            if (searchResults.length > 0) {
+                setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, role: targetRole } : u));
+            }
+            alert(`User role updated to ${targetRole}`);
+        } catch (err) {
+            alert("Failed to update role");
+        } finally {
+            setUpdatingUserId(null);
+        }
+    };
+
+    const handleUpdateStatus = async (userId: string, targetStatus: 'active' | 'banned') => {
+        if (!confirm(`Are you sure you want to set this user's status to ${targetStatus}?`)) return;
+
+        setUpdatingUserId(userId);
+        try {
+            await api.patch(`/api/super-user/user/${userId}/status`, { status: targetStatus });
+            // Refresh results
+            if (searchResults.length > 0) {
+                setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, status: targetStatus } : u));
+            }
+            await fetchData();
+            alert(`User status updated to ${targetStatus}`);
+        } catch (err) {
+            alert("Failed to update status");
+        } finally {
+            setUpdatingUserId(null);
+        }
+    };
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    if (loading && admins.length === 0) {
+        return (
+            <div className="flex-1 flex items-center justify-center bg-gray-50">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex-1 overflow-y-auto bg-gray-50 p-8">
+            <div className="max-w-6xl mx-auto">
+                <h1 className="text-2xl font-bold text-gray-900 mb-8 flex items-center gap-3">
+                    <ShieldCheckIcon className="w-8 h-8 text-blue-600" />
+                    Super User Control Panel
+                </h1>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                    {/* GLOBAL CONTEXT MANAGEMENT */}
+                    <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col">
+                        <div className="flex items-center gap-3 mb-4">
+                            <GlobeAltIcon className="w-6 h-6 text-blue-600" />
+                            <h2 className="text-lg font-semibold text-gray-900">Super Global Context</h2>
+                        </div>
+                        <p className="text-sm text-gray-500 mb-4">
+                            These instructions are prepended to EVERY AI response for ALL users. Use this for platform-wide rules, character limits, or high-priority safety guidance.
+                        </p>
+                        <textarea
+                            className="flex-1 min-h-[12rem] w-full bg-gray-50 border border-gray-300 rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                            placeholder="Enter platform-wide rules..."
+                            value={globalContext}
+                            onChange={(e) => setGlobalContext(e.target.value)}
+                        />
+                        <button
+                            onClick={handleSaveGlobalContext}
+                            disabled={saving}
+                            className="mt-4 w-full bg-blue-600 text-white px-6 py-2 rounded-xl font-medium hover:bg-blue-700 transition disabled:opacity-50"
+                        >
+                            {saving ? 'Updating...' : 'Update Global Context'}
+                        </button>
+                    </div>
+
+                    {/* CURRENT ADMINS LIST */}
+                    <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                        <div className="flex items-center gap-3 mb-4">
+                            <UserPlusIcon className="w-6 h-6 text-blue-600" />
+                            <h2 className="text-lg font-semibold text-gray-900">Current Administration</h2>
+                        </div>
+
+                        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+                            {admins.map(admin => (
+                                <div key={admin.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-200 group">
+                                    <div>
+                                        <p className="text-sm font-medium text-gray-900 truncate max-w-[180px]" title={admin.email}>{admin.email}</p>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold uppercase ${admin.role === 'super_user' ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700'
+                                                }`}>
+                                                {admin.role.replace('_', ' ')}
+                                            </span>
+                                            {admin.status === 'banned' && (
+                                                <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-md font-bold uppercase">Banned</span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {admin.role === 'admin' && (
+                                        <button
+                                            onClick={() => handleUpdateRole(admin.id, 'user')}
+                                            disabled={!!updatingUserId}
+                                            className="text-gray-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition opacity-0 group-hover:opacity-100"
+                                            title="Demote to User"
+                                        >
+                                            <UserMinusIcon className="w-5 h-5" />
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                {/* USER SEARCH & MANAGEMENT */}
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+                    <div className="flex items-center gap-3 mb-6">
+                        <MagnifyingGlassIcon className="w-6 h-6 text-blue-600" />
+                        <h2 className="text-lg font-semibold text-gray-900">Global User Management</h2>
+                    </div>
+
+                    <form onSubmit={handleSearch} className="flex gap-4 mb-8">
+                        <input
+                            type="text"
+                            placeholder="Search by exact email or ID..."
+                            className="flex-1 bg-gray-50 border border-gray-300 rounded-xl px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                        <button
+                            type="submit"
+                            disabled={isSearching}
+                            className="bg-blue-600 text-white px-6 py-2 rounded-xl font-medium hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-2"
+                        >
+                            {isSearching ? 'Searching...' : 'Search'}
+                        </button>
+                    </form>
+
+                    {searchResults.length > 0 && (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="border-b border-gray-100 text-sm text-gray-400 font-medium">
+                                        <th className="pb-4 pr-4">User Details</th>
+                                        <th className="pb-4 px-4 text-center">Role</th>
+                                        <th className="pb-4 px-4 text-center">Status</th>
+                                        <th className="pb-4 pl-4 text-right">Overrides</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {searchResults.map(user => (
+                                        <tr key={user.id} className="text-sm group hover:bg-gray-50/50 transition">
+                                            <td className="py-4 pr-4">
+                                                <div className="font-medium text-gray-900">{user.email}</div>
+                                                <div className="text-xs text-gray-500 font-mono truncate max-w-[200px]" title={user.id}>{user.id}</div>
+                                            </td>
+                                            <td className="py-4 px-4 text-center">
+                                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${user.role === 'super_user' ? 'bg-amber-100 text-amber-700' :
+                                                        user.role === 'admin' ? 'bg-purple-100 text-purple-700' :
+                                                            'bg-blue-100 text-blue-700'
+                                                    }`}>
+                                                    {user.role}
+                                                </span>
+                                            </td>
+                                            <td className="py-4 px-4 text-center">
+                                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${user.status === 'active' ? 'bg-green-100 text-green-700' :
+                                                        user.status === 'banned' ? 'bg-red-100 text-red-700' :
+                                                            'bg-gray-100 text-gray-700'
+                                                    }`}>
+                                                    {user.status}
+                                                </span>
+                                            </td>
+                                            <td className="py-4 pl-4 text-right">
+                                                <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    {/* ROLE ACTIONS */}
+                                                    {user.role === 'user' && (
+                                                        <button
+                                                            onClick={() => handleUpdateRole(user.id, 'admin')}
+                                                            disabled={!!updatingUserId}
+                                                            className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition disabled:opacity-30"
+                                                            title="Promote to Admin"
+                                                        >
+                                                            <ArrowRightCircleIcon className="w-5 h-5" />
+                                                        </button>
+                                                    )}
+                                                    {user.role === 'admin' && (
+                                                        <button
+                                                            onClick={() => handleUpdateRole(user.id, 'user')}
+                                                            disabled={!!updatingUserId}
+                                                            className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition disabled:opacity-30"
+                                                            title="Demote to User"
+                                                        >
+                                                            <UserMinusIcon className="w-5 h-5" />
+                                                        </button>
+                                                    )}
+
+                                                    {/* STATUS ACTIONS */}
+                                                    {user.role !== 'super_user' && (
+                                                        <button
+                                                            onClick={() => handleUpdateStatus(user.id, user.status === 'banned' ? 'active' : 'banned')}
+                                                            disabled={!!updatingUserId}
+                                                            className={`p-2 rounded-lg transition ${user.status === 'banned' ? 'text-green-600 hover:bg-green-50' : 'text-red-600 hover:bg-red-50 disabled:opacity-30'}`}
+                                                            title={user.status === 'banned' ? 'Restore User' : 'Ban User'}
+                                                        >
+                                                            {user.status === 'banned' ? <CheckCircleIcon className="w-5 h-5" /> : <NoSymbolIcon className="w-5 h-5" />}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {searchResults.length === 0 && !isSearching && searchQuery && (
+                        <div className="text-center py-12 text-gray-400">
+                            No users found for "{searchQuery}"
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}

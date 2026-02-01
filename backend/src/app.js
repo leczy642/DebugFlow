@@ -45,12 +45,19 @@ import sessionsRouter from './routes/sessions.js';
 import messagesRouter from './routes/messages.js';
 import projectsRouter from './routes/projects.js';
 import userRouter from './routes/user.js';
+import adminRouter from './routes/admin.js';
+import superUserRouter from './routes/superUser.js';
 
 // User queries
-import { getUserById, createUser, updateUserLogin } from './db/models/user_queries.js';
+import { ensureUsersTableExists } from './db/models/user_queries.js';
 
 // Load environment variables
 dotenv.config();
+
+// Ensure database tables exist
+ensureUsersTableExists().catch(err => {
+  logger.error("Database initialization failed", { error: err.message });
+});
 
 // Create Express app
 export const app = express();
@@ -73,43 +80,10 @@ app.get('/health', (req, res) => {
 // using the API routes
 
 app.get('/protected', authenticateToken, async (req, res) => {
-  try {
-    const { uid, email, fullname, email_verified } = req.user;
-
-    // Check if user exists
-    let user = await getUserById(uid);
-
-    if (!user) {
-      console.log(`Creating new user: ${email}`);
-
-      // Determine auth provider and oauth status
-      const provider = req.user.sign_in_provider || 'unknown';
-      const isOauth = provider !== 'password' && provider !== 'email';
-
-      // Create new user
-      user = await createUser({
-        id: uid,
-        email: email || "",
-        name: fullname || "User",
-        email_verified: email_verified || false,
-        auth_provider: provider,
-        is_oauth_user: isOauth,
-        oauth_verified: isOauth // Assuming oauth implies verified for now
-      });
-    } else {
-      // Update last login
-      await updateUserLogin(uid);
-    }
-
-    res.json({
-      message: 'You are authenticated',
-      user: req.user,
-      dbUser: user
-    });
-  } catch (error) {
-    console.error("Error syncing user:", error);
-    res.status(500).json({ error: "Internal server error during user sync" });
-  }
+  res.json({
+    message: 'You are authenticated',
+    user: req.user
+  });
 });
 
 // using the API routes
@@ -121,6 +95,8 @@ app.use("/api/sessions", authenticateToken, sessionsRouter);
 app.use("/api/messages", messagesRouter);
 app.use("/api/projects", authenticateToken, projectsRouter);
 app.use("/api/user", authenticateToken, userRouter);
+app.use("/api/admin", authenticateToken, adminRouter);
+app.use("/api/super-user", authenticateToken, superUserRouter);
 
 // Global error handler (must be last)
 app.use(errorHandler(logger));

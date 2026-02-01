@@ -16,6 +16,7 @@ import { chatWithAI } from "./chatService.js";
 import { logger } from "../utils/logger.js";
 import { ragService } from "./ragService.js";
 import { getEffectiveGlobalContext, proposeCandidate } from "./memoryService.js";
+import { getGlobalSetting } from "../db/models/user_queries.js";
 
 // ====== CONFIGURATION ======
 const PROJECT_CONTEXT_TOKEN_LIMIT = 8000;
@@ -295,7 +296,22 @@ export async function buildContextMessages(projectId, currentSessionId, currentQ
     const contextMessages = [];
     let tokensUsed = 0;
 
-    // 0. GLOBAL USER CONTEXT (Tier 1 & 2) - Highest Priority
+    // 0. SUPER GLOBAL CONTEXT (Platform-wide) - Absolute Highest Priority
+    try {
+        const superGlobalContext = await getGlobalSetting('super_global_context');
+        if (superGlobalContext) {
+            const sgTokens = estimateTokens(superGlobalContext);
+            contextMessages.push({
+                role: "system",
+                content: `SUPER GLOBAL CONTEXT (PLATFORM RULES):\n${superGlobalContext}`
+            });
+            tokensUsed += sgTokens;
+        }
+    } catch (err) {
+        logger.warn("Failed to fetch super global context", { error: err.message });
+    }
+
+    // 0.5 GLOBAL USER CONTEXT (Tier 1 & 2) - Next Priority
     if (userId) {
         const globalContext = await getEffectiveGlobalContext(userId);
         if (globalContext) {

@@ -16,6 +16,10 @@ import AddToProjectModal from '@/components/chat/AddToProjectModal';
 import RenameProjectModal from '@/components/chat/RenameProjectModal';
 import DeleteProjectModal from '@/components/chat/DeleteProjectModal';
 
+// Role-based views
+import AdminDashboard from '@/components/admin/AdminDashboard';
+import SuperUserPanel from '@/components/super-user/SuperUserPanel';
+
 // app/page.tsx
 export default function HomePage() {
   const { isAuthenticated, loading } = useAuth();
@@ -26,7 +30,8 @@ export default function HomePage() {
     deleteSessionModal, closeDeleteSession,
     addToProjectModal, closeAddToProject,
     renameProjectModal, closeRenameProject,
-    deleteProjectModal, closeDeleteProject
+    deleteProjectModal, closeDeleteProject,
+    activeView
   } = useUIStore();
 
   const {
@@ -63,12 +68,20 @@ export default function HomePage() {
       <div className="flex h-screen w-screen overflow-hidden">
         {/* LEFT COLUMN — SIDEBAR */}
         <Sidebar />
-        <SessionHeader />
+        {activeView === 'chat' && <SessionHeader />}
 
-        {/* RIGHT COLUMN — CHAT WINDOW + INPUT */}
+        {/* RIGHT COLUMN — CHAT WINDOW / DASHBOARDS */}
         <div className="flex flex-col flex-1 bg-white">
-          <ChatWindow />
-          <InputBar />
+          {activeView === 'chat' && (
+            <>
+              <ChatWindow />
+              <InputBar />
+            </>
+          )}
+
+          {activeView === 'admin_dashboard' && <AdminDashboard />}
+
+          {activeView === 'super_user_panel' && <SuperUserPanel />}
         </div>
       </div>
 

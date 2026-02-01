@@ -17,6 +17,7 @@ import { logger } from "../utils/logger.js";
 import { streamChatWithAI, generateSessionTitle } from "../services/chatService.js";
 import { retryWithBackoff } from "../utils/retry.js";
 import { withTimeout } from "../utils/withTimeout.js";
+import { requireNotBlocked } from "../middleware/roleMiddleware.js";
 import {
   addMessage,
   sessionExists,
@@ -32,7 +33,7 @@ import {
 
 const router = express.Router();
 
-router.post("/", async (req, res) => {
+router.post("/", requireNotBlocked, async (req, res) => {
   const LLM_CHAT_TIMEOUT_MS = Number(
     process.env.HUGGINGFACE_CHAT_TIMEOUT_MS || 8000
   );

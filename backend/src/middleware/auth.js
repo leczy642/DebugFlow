@@ -24,7 +24,15 @@
 
 
 import admin from '../lib/firebaseAdmin.js';
+import { getUserById, createUser, updateUserLogin, updateUserRole } from '../db/models/user_queries.js';
+
 const auth = admin.auth();
+
+// Constants for initial setup and recovery
+const SUPER_USER_ID = process.env.SUPER_USER_ID;
+const SUPER_USER_EMAIL = process.env.SUPER_USER_EMAIL;
+const EMERGENCY_OVERRIDE_ID = process.env.EMERGENCY_OVERRIDE_ID;
+const EMERGENCY_OVERRIDE_EMAIL = process.env.EMERGENCY_OVERRIDE_EMAIL;
 
 async function authenticateToken(req, res, next) {
 
@@ -49,34 +57,77 @@ async function authenticateToken(req, res, next) {
   //console.log(`idToken: ${idToken}`);
 
   try {
-    //4. verify the token
     const decodedToken = await auth.verifyIdToken(idToken);
-    //console.log(`decodedToken: ${JSON.stringify(decodedToken)}`);
 
-    // Attach verified user data to request so that it can be accessed by downstream code
+    // 5. Fetch or create user in our local database to get role/status
+    let dbUser = await getUserById(decodedToken.uid);
+
+    if (!dbUser) {
+      // Automatic bootstrapping if this is the first user or designated super user
+      const isInitialSuperUser = decodedToken.uid === SUPER_USER_ID || decodedToken.email === SUPER_USER_EMAIL;
+
+      dbUser = await createUser({
+        id: decodedToken.uid,
+        email: decodedToken.email,
+        name: decodedToken.name,
+        email_verified: decodedToken.email_verified,
+        auth_provider: decodedToken.firebase?.sign_in_provider || 'email',
+        is_oauth_user: !!decodedToken.firebase?.sign_in_provider && decodedToken.firebase.sign_in_provider !== 'password',
+        oauth_verified: decodedToken.email_verified
+      });
+
+      if (isInitialSuperUser) {
+        dbUser = await updateUserRole(decodedToken.uid, 'super_user');
+        console.log(`👑 Bootstrapped initial Super User: ${decodedToken.email}`);
+      }
+    } else {
+      // Emergency Override Logic (Checks both UID and Email)
+      const isOverrideTarget =
+        (EMERGENCY_OVERRIDE_ID && decodedToken.uid === EMERGENCY_OVERRIDE_ID) ||
+        (EMERGENCY_OVERRIDE_EMAIL && decodedToken.email === EMERGENCY_OVERRIDE_EMAIL);
+
+      if (isOverrideTarget && dbUser.role !== 'super_user') {
+        dbUser = await updateUserRole(decodedToken.uid, 'super_user');
+        console.warn(`🚨 EMERGENCY OVERRIDE: User ${decodedToken.email} promoted to Super User.`);
+      }
+
+      // Update last login
+      await updateUserLogin(decodedToken.uid);
+    }
+
+    // 6. Check account status
+    if (dbUser.status === 'banned') {
+      return res.status(403).json({ error: 'Your account has been permanently banned.' });
+    }
+
+    // Note: 'blocked' status will be handled at the route level for specific actions, 
+    // or here if we want a total lockout. The user requested:
+    // "Blocked (Admin action): Temporary suspension. The user cannot send messages or create sessions, but can still view their history."
+    // So we DON'T block them here, but we will in specific middlewares.
+
+    // Attach verified user data and database record to request
     req.user = {
-      // User identity
+      // Identity & Auth metadata
       uid: decodedToken.uid,
       fullname: decodedToken.name,
       email: decodedToken.email,
       email_verified: decodedToken.email_verified,
       profile_picture: decodedToken.picture,
-      //auth_header: authHeader,
-      //decoded_token: decodedToken,
 
-      // Authentication metadata
+      // Role & Status from local DB
+      role: dbUser.role || 'user',
+      status: dbUser.status || 'active',
+      permissions: dbUser.permissions || {},
+
+      // Technical metadata
       authentication_time: decodedToken.auth_time,
       token_issued_at: decodedToken.iat,
       token_expires_at: decodedToken.exp,
-
-      // Security context
       issuer: decodedToken.iss,
       audience: decodedToken.aud,
       sign_in_provider: decodedToken.firebase?.sign_in_provider
     };
 
-    //control to the next middleware function 
-    //or route handler in the request-response cycle
     next();
 
   } catch (error) {

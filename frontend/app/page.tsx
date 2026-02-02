@@ -22,7 +22,7 @@ import SuperUserPanel from '@/components/super-user/SuperUserPanel';
 
 // app/page.tsx
 export default function HomePage() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, isAdmin, isSuperUser } = useAuth();
   const router = useRouter();
 
   const {
@@ -79,9 +79,9 @@ export default function HomePage() {
             </>
           )}
 
-          {activeView === 'admin_dashboard' && <AdminDashboard />}
+          {activeView === 'admin_dashboard' && (isAdmin || isSuperUser) && <AdminDashboard />}
 
-          {activeView === 'super_user_panel' && <SuperUserPanel />}
+          {activeView === 'super_user_panel' && isSuperUser && <SuperUserPanel />}
         </div>
       </div>
 

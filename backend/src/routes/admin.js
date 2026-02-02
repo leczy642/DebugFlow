@@ -210,11 +210,8 @@ router.post("/transfer/accept", async (req, res) => {
             return res.status(500).json({ error: "System error: current Super User not found." });
         }
 
-        // Perform the atomic transfer
+        // Perform the atomic transfer (now handles clearing the pending flag internally)
         await transferSuperUser(currentSuperUserId, req.user.uid);
-
-        // Clear the pending transfer
-        await updateGlobalSetting('pending_super_user_transfer', null);
 
         await logAuditEvent(req.user.uid, currentSuperUserId, 'TRANSFER_ACCEPTED', { from: currentSuperUserId, to: req.user.uid });
 

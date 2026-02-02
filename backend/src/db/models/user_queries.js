@@ -205,6 +205,8 @@ export async function transferSuperUser(oldUid, newUid) {
         await client.query('BEGIN');
         await client.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [oldUid]);
         await client.query(`UPDATE users SET role = 'super_user' WHERE id = $2`, [newUid]);
+        // Also clear the pending transfer flag as part of the atomic transaction
+        await client.query(`DELETE FROM global_settings WHERE key = 'pending_super_user_transfer'`);
         await client.query('COMMIT');
     } catch (e) {
         await client.query('ROLLBACK');
@@ -249,9 +251,22 @@ export async function getGlobalSetting(key) {
 }
 
 /**
- * Updates a global setting.
+ * Checks if a global setting key is protected (Super User only).
  */
-export async function updateGlobalSetting(key, value) {
+export function isKeyProtected(key) {
+    const protectedKeys = ['super_global_context', 'pending_super_user_transfer'];
+    return protectedKeys.includes(key);
+}
+
+/**
+ * Updates a global setting.
+ * Hardened to prevent unauthorized updates to protected keys.
+ */
+export async function updateGlobalSetting(key, value, actorRole = 'user') {
+    if (isKeyProtected(key) && actorRole !== 'super_user') {
+        throw new Error(`Unauthorized: Role '${actorRole}' is not allowed to modify protected key '${key}'`);
+    }
+
     await pool.query(
         `INSERT INTO global_settings (key, value, updated_at)
          VALUES ($1, $2, NOW())

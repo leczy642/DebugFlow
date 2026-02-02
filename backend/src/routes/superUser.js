@@ -8,7 +8,7 @@
 import express from "express";
 import { pool } from "../db/postgres_connect.js";
 import { logger } from "../utils/logger.js";
-import { requireRole } from "../middleware/roleMiddleware.js";
+import { requireRole, requireSuperUser } from "../middleware/roleMiddleware.js";
 import {
     updateUserStatus,
     updateUserRole,
@@ -24,6 +24,8 @@ import {
 const router = express.Router();
 
 // All routes here require Super User role
+// All routes here require at least Super User role check by default
+// but we will use requireSuperUser for the most sensitive ones.
 router.use(requireRole('super_user'));
 
 /**
@@ -165,11 +167,11 @@ router.get("/global-context", async (req, res) => {
  * POST /api/super-user/global-context
  * Updates the platform-wide Super Global Context.
  */
-router.post("/global-context", async (req, res) => {
+router.post("/global-context", requireSuperUser, async (req, res) => {
     const { content } = req.body;
 
     try {
-        await updateGlobalSetting('super_global_context', content);
+        await updateGlobalSetting('super_global_context', content, req.user.role);
         await logAuditEvent(req.user.uid, 'SYSTEM', 'GLOBAL_CONTEXT_UPDATE', { preview: content.substring(0, 50) });
 
         res.json({ success: true, content });
@@ -193,7 +195,7 @@ router.post("/transfer/initiate", async (req, res) => {
         }
 
         // Store pending transfer in global settings
-        await updateGlobalSetting('pending_super_user_transfer', targetAdminId);
+        await updateGlobalSetting('pending_super_user_transfer', targetAdminId, req.user.role);
         await logAuditEvent(req.user.uid, targetAdminId, 'TRANSFER_INITIATED', {});
 
         res.json({ success: true, message: `Transfer initiated. Admin ${target.email} must now accept the transfer.` });

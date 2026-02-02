@@ -81,7 +81,7 @@ router.get("/users/search/:query", async (req, res) => {
  */
 router.patch("/user/:id/role", async (req, res) => {
     const { id } = req.params;
-    const { role } = req.body;
+    const { role, reason } = req.body;
 
     if (!['super_user', 'admin', 'user'].includes(role)) {
         return res.status(400).json({ error: "Invalid role" });
@@ -95,7 +95,7 @@ router.patch("/user/:id/role", async (req, res) => {
         }
 
         const user = await updateUserRole(id, role);
-        await logAuditEvent(req.user.uid, id, 'ROLE_CHANGE_DIRECT', { role });
+        await logAuditEvent(req.user.uid, id, 'ROLE_CHANGE_DIRECT', { role, reason });
 
         res.json({ success: true, user });
     } catch (err) {
@@ -110,7 +110,7 @@ router.patch("/user/:id/role", async (req, res) => {
  */
 router.patch("/user/:id/status", async (req, res) => {
     const { id } = req.params;
-    const { status, duration } = req.body;
+    const { status, duration, reason } = req.body;
 
     if (!['active', 'banned', 'blocked'].includes(status)) {
         return res.status(400).json({ error: "Invalid status for Super User action" });
@@ -138,7 +138,7 @@ router.patch("/user/:id/status", async (req, res) => {
             await updateUserStatus(id, status);
         }
 
-        await logAuditEvent(req.user.uid, id, `USER_${status.toUpperCase()}`, { status, duration, expiresAt });
+        await logAuditEvent(req.user.uid, id, `USER_${status.toUpperCase()}`, { status, duration, expiresAt, reason });
 
         res.json({ success: true, status, expiresAt });
     } catch (err) {

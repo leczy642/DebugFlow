@@ -95,11 +95,17 @@ function RoleActionModal({ isOpen, onClose, onConfirm, targetRole, userEmail, is
                     </p>
 
                     <div>
-                        <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Reason (Required)</label>
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider">Reason (Required)</label>
+                            <span className={`text-xs font-medium ${reason.trim().split(/\s+/).filter(Boolean).length > 30 ? 'text-red-500' : 'text-gray-400'}`}>
+                                {reason.trim().split(/\s+/).filter(Boolean).length}/30 words
+                            </span>
+                        </div>
                         <textarea
                             autoFocus
-                            className="w-full h-32 bg-gray-50 border border-gray-300 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                            placeholder="Provide a rationale for this action..."
+                            className={`w-full h-32 bg-gray-50 border rounded-2xl p-4 text-sm focus:ring-2 focus:border-transparent transition ${reason.trim().split(/\s+/).filter(Boolean).length > 30 ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
+                                }`}
+                            placeholder="Provide a rationale for this action (max 30 words)..."
                             value={reason}
                             onChange={(e) => setReason(e.target.value)}
                         />
@@ -115,11 +121,17 @@ function RoleActionModal({ isOpen, onClose, onConfirm, targetRole, userEmail, is
                     </button>
                     <button
                         onClick={() => {
-                            if (!reason.trim()) return alert("Please provide a reason.");
+                            const wordCount = reason.trim().split(/\s+/).filter(Boolean).length;
+                            if (wordCount === 0) return alert("Please provide a reason.");
+                            if (wordCount > 30) return alert("Reason cannot exceed 30 words.");
                             onConfirm(reason);
                             setReason("");
                         }}
-                        className="flex-1 px-6 py-2.5 rounded-xl font-medium bg-blue-600 text-white hover:bg-blue-700 transition shadow-lg shadow-blue-200"
+                        className={`flex-1 px-6 py-2.5 rounded-xl font-medium text-white transition shadow-lg ${reason.trim().split(/\s+/).filter(Boolean).length > 30
+                            ? 'bg-gray-400 cursor-not-allowed shadow-none'
+                            : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'
+                            }`}
+                        disabled={reason.trim().split(/\s+/).filter(Boolean).length > 30}
                     >
                         {isSuperUser ? 'Confirm Change' : 'Submit Suggestion'}
                     </button>

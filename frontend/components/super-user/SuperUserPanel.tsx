@@ -10,7 +10,9 @@ import {
     UserMinusIcon,
     NoSymbolIcon,
     CheckCircleIcon,
-    XMarkIcon
+    XMarkIcon,
+    ChevronDownIcon,
+    ChevronUpIcon
 } from "@heroicons/react/24/outline";
 
 // --- BLOCK DURATION MODAL ---
@@ -64,16 +66,18 @@ function BlockDurationModal({ isOpen, onClose, onConfirm, userEmail }: {
     );
 }
 
-// --- CONFIRMATION MODAL ---
-function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confirmText, confirmVariant = 'blue' }: {
+// --- ACTION REASON MODAL ---
+function ActionReasonModal({ isOpen, onClose, onConfirm, title, message, confirmText, confirmVariant = 'blue' }: {
     isOpen: boolean;
     onClose: () => void;
-    onConfirm: () => void;
+    onConfirm: (reason: string) => void;
     title: string;
     message: string;
     confirmText: string;
     confirmVariant?: 'blue' | 'red' | 'green';
 }) {
+    const [reason, setReason] = useState("");
+
     if (!isOpen) return null;
 
     const variantClasses = {
@@ -82,25 +86,53 @@ function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confirmText,
         green: 'bg-green-600 hover:bg-green-700 shadow-green-200'
     };
 
+    const wordCount = reason.trim().split(/\s+/).filter(Boolean).length;
+    const isOverLimit = wordCount > 30;
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden border border-gray-100 flex flex-col">
+            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-gray-100 flex flex-col">
                 <div className="p-6 border-b border-gray-100 flex items-center justify-between">
                     <h3 className="text-xl font-bold text-gray-900">{title}</h3>
                     <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition">
                         <XMarkIcon className="w-5 h-5" />
                     </button>
                 </div>
-                <div className="p-6">
+                <div className="p-6 space-y-4">
                     <p className="text-sm text-gray-500 leading-relaxed">{message}</p>
+
+                    <div>
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider">Reason for Action (Required)</label>
+                            <span className={`text-xs font-medium ${isOverLimit ? 'text-red-500' : 'text-gray-400'}`}>
+                                {wordCount}/30 words
+                            </span>
+                        </div>
+                        <textarea
+                            autoFocus
+                            className={`w-full h-32 bg-gray-50 border rounded-2xl p-4 text-sm focus:ring-2 focus:border-transparent transition ${isOverLimit ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
+                                }`}
+                            placeholder="Why are you taking this action? (max 30 words)..."
+                            value={reason}
+                            onChange={(e) => setReason(e.target.value)}
+                        />
+                    </div>
                 </div>
                 <div className="p-6 bg-gray-50 flex gap-3">
                     <button onClick={onClose} className="flex-1 px-6 py-2.5 rounded-xl font-medium text-gray-600 hover:bg-gray-200 transition">
                         Cancel
                     </button>
                     <button
-                        onClick={() => { onConfirm(); onClose(); }}
-                        className={`flex-1 px-6 py-2.5 rounded-xl font-medium text-white transition shadow-lg ${variantClasses[confirmVariant]}`}
+                        onClick={() => {
+                            if (wordCount === 0) return alert("Please provide a reason.");
+                            if (isOverLimit) return alert("Reason cannot exceed 30 words.");
+                            onConfirm(reason);
+                            setReason("");
+                            onClose();
+                        }}
+                        disabled={isOverLimit}
+                        className={`flex-1 px-6 py-2.5 rounded-xl font-medium text-white transition shadow-lg ${isOverLimit ? 'bg-gray-400 cursor-not-allowed shadow-none' : variantClasses[confirmVariant]
+                            }`}
                     >
                         {confirmText}
                     </button>
@@ -116,6 +148,7 @@ export default function SuperUserPanel() {
     const [globalContext, setGlobalContext] = useState("");
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [expandedReasons, setExpandedReasons] = useState<Set<string>>(new Set());
 
     // Search State
     const [searchQuery, setSearchQuery] = useState("");
@@ -131,7 +164,7 @@ export default function SuperUserPanel() {
         message: string;
         confirmText: string;
         confirmVariant: 'blue' | 'red' | 'green';
-        onConfirm: () => void;
+        onConfirm: (reason: string) => void;
     }>({
         isOpen: false,
         title: "",
@@ -149,6 +182,15 @@ export default function SuperUserPanel() {
         userId: "",
         userEmail: ""
     });
+
+    const toggleReason = (userId: string) => {
+        setExpandedReasons(prev => {
+            const next = new Set(prev);
+            if (next.has(userId)) next.delete(userId);
+            else next.add(userId);
+            return next;
+        });
+    };
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -203,10 +245,10 @@ export default function SuperUserPanel() {
             message: `Are you sure you want to change the role of ${userEmail} to ${targetRole}?`,
             confirmText: targetRole === 'admin' ? "Promote" : "Demote",
             confirmVariant: targetRole === 'admin' ? 'blue' : 'red',
-            onConfirm: async () => {
+            onConfirm: async (reason: string) => {
                 setUpdatingUserId(userId);
                 try {
-                    await api.patch(`/api/super-user/user/${userId}/role`, { role: targetRole });
+                    await api.patch(`/api/super-user/user/${userId}/role`, { role: targetRole, reason });
                     await fetchData();
                     if (searchResults.length > 0) {
                         setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, role: targetRole } : u));
@@ -237,10 +279,10 @@ export default function SuperUserPanel() {
             message: `Are you sure you want to ${targetStatus === 'banned' ? 'ban' : 'restore'} account ${userEmail}?`,
             confirmText: targetStatus === 'banned' ? "Ban Account" : "Restore Account",
             confirmVariant: targetStatus === 'banned' ? 'red' : 'green',
-            onConfirm: async () => {
+            onConfirm: async (reason: string) => {
                 setUpdatingUserId(userId);
                 try {
-                    await api.patch(`/api/super-user/user/${userId}/status`, { status: targetStatus });
+                    await api.patch(`/api/super-user/user/${userId}/status`, { status: targetStatus, reason });
                     if (searchResults.length > 0) {
                         setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, status: targetStatus } : u));
                     }
@@ -512,9 +554,27 @@ export default function SuperUserPanel() {
                                         <tr key={user.id} className="text-sm group hover:bg-gray-50/50 transition">
                                             <td className="py-4 pr-4">
                                                 <div className="font-medium text-gray-900">{user.email}</div>
-                                                <div className="text-xs text-gray-500 font-mono truncate max-w-[200px]" title={user.id}>{user.id}</div>
+                                                <div className="text-xs text-gray-500 font-mono truncate max-w-[200px] mb-1" title={user.id}>{user.id}</div>
                                                 {user.suggestion_reason && (
-                                                    <div className="text-xs text-purple-600 italic mt-1">Reason: {user.suggestion_reason}</div>
+                                                    <div className="flex items-start gap-1 max-w-[300px]">
+                                                        <div
+                                                            className={`text-xs text-purple-600 italic transition-all duration-300 ${expandedReasons.has(user.id) ? "" : "line-clamp-1"
+                                                                }`}
+                                                        >
+                                                            <span className="font-semibold not-italic text-purple-700">Reason:</span> {user.suggestion_reason}
+                                                        </div>
+                                                        <button
+                                                            onClick={() => toggleReason(user.id)}
+                                                            className="p-0.5 mt-0.5 text-gray-400 hover:text-purple-600 transition rounded-md hover:bg-purple-50 flex-shrink-0"
+                                                            title={expandedReasons.has(user.id) ? "Hide Reason" : "Show Reason"}
+                                                        >
+                                                            {expandedReasons.has(user.id) ? (
+                                                                <ChevronUpIcon className="w-3.5 h-3.5" />
+                                                            ) : (
+                                                                <ChevronDownIcon className="w-3.5 h-3.5" />
+                                                            )}
+                                                        </button>
+                                                    </div>
                                                 )}
                                             </td>
                                             <td className="py-4 px-4 text-center">
@@ -572,7 +632,7 @@ export default function SuperUserPanel() {
                 </div>
             </div>
 
-            <ConfirmModal
+            <ActionReasonModal
                 isOpen={confirmConfig.isOpen}
                 onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
                 onConfirm={confirmConfig.onConfirm}

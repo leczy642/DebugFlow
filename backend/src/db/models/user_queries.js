@@ -225,6 +225,19 @@ export async function getAdmins() {
 }
 
 /**
+ * Gets all pending admin promotion requests.
+ */
+export async function getPromotionRequests() {
+    const { rows } = await pool.query(
+        `SELECT id, email, name, role, status, suggested_role, suggestion_reason, created_at 
+         FROM users 
+         WHERE suggested_role = 'admin' 
+         ORDER BY created_at DESC`
+    );
+    return rows;
+}
+
+/**
  * Gets a global setting.
  */
 export async function getGlobalSetting(key) {

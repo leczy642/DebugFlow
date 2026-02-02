@@ -112,6 +112,7 @@ function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confirmText,
 
 export default function SuperUserPanel() {
     const [admins, setAdmins] = useState<any[]>([]);
+    const [promotionRequests, setPromotionRequests] = useState<any[]>([]);
     const [globalContext, setGlobalContext] = useState("");
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -152,12 +153,14 @@ export default function SuperUserPanel() {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [adminsData, contextData] = await Promise.all([
+            const [adminsData, contextData, requestsData] = await Promise.all([
                 api.get('/api/super-user/admins'),
-                api.get('/api/super-user/global-context')
+                api.get('/api/super-user/global-context'),
+                api.get('/api/super-user/promotion-requests')
             ]);
             setAdmins(adminsData);
             setGlobalContext(contextData.content || "");
+            setPromotionRequests(requestsData);
         } catch (err) {
             console.error("Failed to fetch super user data", err);
         } finally {
@@ -482,6 +485,88 @@ export default function SuperUserPanel() {
                     {searchResults.length === 0 && hasSearched && !isSearching && searchQuery && (
                         <div className="text-center py-12 text-gray-400">
                             No users found for "{searchQuery}"
+                        </div>
+                    )}
+                </div>
+
+                {/* ADMIN PROMOTION REQUESTS LIST */}
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mt-8">
+                    <div className="flex items-center gap-3 mb-6">
+                        <ArrowRightCircleIcon className="w-6 h-6 text-purple-600" />
+                        <h2 className="text-lg font-semibold text-gray-900">Admin Promotion Requests</h2>
+                    </div>
+
+                    {promotionRequests.length > 0 ? (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="border-b border-gray-100 text-sm text-gray-400 font-medium">
+                                        <th className="pb-4 pr-4">User</th>
+                                        <th className="pb-4 px-4 text-center">Role</th>
+                                        <th className="pb-4 px-4 text-center">Status</th>
+                                        <th className="pb-4 pl-4 text-right">Overrides</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {promotionRequests.map(user => (
+                                        <tr key={user.id} className="text-sm group hover:bg-gray-50/50 transition">
+                                            <td className="py-4 pr-4">
+                                                <div className="font-medium text-gray-900">{user.email}</div>
+                                                <div className="text-xs text-gray-500 font-mono truncate max-w-[200px]" title={user.id}>{user.id}</div>
+                                                {user.suggestion_reason && (
+                                                    <div className="text-xs text-purple-600 italic mt-1">Reason: {user.suggestion_reason}</div>
+                                                )}
+                                            </td>
+                                            <td className="py-4 px-4 text-center">
+                                                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-blue-100 text-blue-700">
+                                                    {user.role}
+                                                </span>
+                                            </td>
+                                            <td className="py-4 px-4 text-center">
+                                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${user.status === 'active' ? 'bg-green-100 text-green-700' :
+                                                    user.status === 'banned' ? 'bg-red-100 text-red-700' :
+                                                        user.status === 'blocked' ? 'bg-orange-100 text-orange-700' :
+                                                            'bg-gray-100 text-gray-700'
+                                                    }`}>
+                                                    {user.status}
+                                                </span>
+                                            </td>
+                                            <td className="py-4 pl-4 text-right">
+                                                <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                        onClick={() => handleUpdateRole(user.id, user.email, 'admin')}
+                                                        disabled={!!updatingUserId}
+                                                        className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition disabled:opacity-30"
+                                                        title="Promote to Admin"
+                                                    >
+                                                        <ArrowRightCircleIcon className="w-5 h-5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleUpdateStatus(user.id, user.email, 'blocked')}
+                                                        disabled={!!updatingUserId}
+                                                        className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition disabled:opacity-30"
+                                                        title="Block User"
+                                                    >
+                                                        <NoSymbolIcon className="w-5 h-5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleUpdateStatus(user.id, user.email, 'banned')}
+                                                        disabled={!!updatingUserId}
+                                                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition disabled:opacity-30"
+                                                        title="Ban User"
+                                                    >
+                                                        <ShieldCheckIcon className="w-5 h-5" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="text-center py-12 text-gray-400">
+                            No pending promotion requests.
                         </div>
                     )}
                 </div>

@@ -68,7 +68,7 @@ router.get("/users/search/:query", async (req, res) => {
     const { query } = req.params;
     try {
         const { rows } = await pool.query(
-            `SELECT id, email, name, role, status, suggested_role, suggestion_reason 
+            `SELECT id, email, name, role, status, suggested_role, suggestion_reason, block_expires_at 
              FROM users 
              WHERE email ILIKE $1 OR id = $2
              LIMIT 10`,
@@ -78,6 +78,25 @@ router.get("/users/search/:query", async (req, res) => {
     } catch (err) {
         logger.error("Admin User Search Failed", { error: err.message });
         res.status(500).json({ error: "Failed to search for users" });
+    }
+});
+
+/**
+ * GET /api/admin/users/blocked
+ * Returns a list of all currently blocked users.
+ */
+router.get("/users/blocked", async (req, res) => {
+    try {
+        const { rows } = await pool.query(
+            `SELECT id, email, name, role, status, block_expires_at 
+             FROM users 
+             WHERE status = 'blocked'
+             ORDER BY block_expires_at ASC`
+        );
+        res.json(rows);
+    } catch (err) {
+        logger.error("Admin Blocked Users Fetch Failed", { error: err.message });
+        res.status(500).json({ error: "Failed to fetch blocked users" });
     }
 });
 

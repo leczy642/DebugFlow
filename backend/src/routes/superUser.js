@@ -17,7 +17,8 @@ import {
     getUserById,
     updateGlobalSetting,
     getGlobalSetting,
-    transferSuperUser
+    transferSuperUser,
+    getPromotionRequests
 } from "../db/models/user_queries.js";
 
 const router = express.Router();
@@ -36,6 +37,20 @@ router.get("/admins", async (req, res) => {
     } catch (err) {
         logger.error("Fetch Admins Failed", { error: err.message });
         res.status(500).json({ error: "Failed to fetch admins" });
+    }
+});
+
+/**
+ * GET /api/super-user/promotion-requests
+ * Returns a list of users who have requested an admin role.
+ */
+router.get("/promotion-requests", async (req, res) => {
+    try {
+        const requests = await getPromotionRequests();
+        res.json(requests);
+    } catch (err) {
+        logger.error("Fetch Promotion Requests Failed", { error: err.message });
+        res.status(500).json({ error: "Failed to fetch promotion requests" });
     }
 });
 

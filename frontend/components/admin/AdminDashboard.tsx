@@ -138,6 +138,9 @@ export default function AdminDashboard() {
     const [hasSearched, setHasSearched] = useState(false); // Fix for UX
     const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
     const [currentUser, setCurrentUser] = useState<any>(null);
+    const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+    const [isFetchingBlocked, setIsFetchingBlocked] = useState(false);
+    const [now, setNow] = useState(new Date());
 
     // Modal State
     const [modalConfig, setModalConfig] = useState<{
@@ -184,6 +187,18 @@ export default function AdminDashboard() {
         }
     }, []);
 
+    const fetchBlockedUsers = useCallback(async () => {
+        setIsFetchingBlocked(true);
+        try {
+            const data = await api.get('/api/admin/users/blocked');
+            setBlockedUsers(data);
+        } catch (err) {
+            console.error("Failed to fetch blocked users", err);
+        } finally {
+            setIsFetchingBlocked(false);
+        }
+    }, []);
+
     const handleSearch = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
         if (!searchQuery.trim()) return;
@@ -206,7 +221,8 @@ export default function AdminDashboard() {
             setUpdatingUserId(userId);
             try {
                 await api.patch(`/api/admin/user/${userId}/block`, { duration: null });
-                setSearchResults((prev: any[]) => prev.map(u => u.id === userId ? { ...u, status: 'active' } : u));
+                setSearchResults((prev: any[]) => prev.map(u => u.id === userId ? { ...u, status: 'active', block_expires_at: null } : u));
+                setBlockedUsers((prev: any[]) => prev.filter(u => u.id !== userId));
                 alert("User restored successfully.");
             } catch (err) {
                 alert("Failed to restore user.");
@@ -229,8 +245,9 @@ export default function AdminDashboard() {
         setBlockModal((prev: any) => ({ ...prev, isOpen: false }));
 
         try {
-            await api.patch(`/api/admin/user/${userId}/block`, { duration });
-            setSearchResults((prev: any[]) => prev.map(u => u.id === userId ? { ...u, status: 'blocked' } : u));
+            const response = await api.patch(`/api/admin/user/${userId}/block`, { duration });
+            setSearchResults((prev: any[]) => prev.map(u => u.id === userId ? { ...u, status: 'blocked', block_expires_at: response.expiresAt } : u));
+            fetchBlockedUsers(); // Refresh the list
             alert(`User blocked for ${duration}.`);
         } catch (err) {
             alert("Failed to block user.");
@@ -272,7 +289,30 @@ export default function AdminDashboard() {
     useEffect(() => {
         fetchMetrics();
         fetchProfile();
-    }, [fetchMetrics, fetchProfile]);
+        fetchBlockedUsers();
+    }, [fetchMetrics, fetchProfile, fetchBlockedUsers]);
+
+    // Update real-time clock for countdowns
+    useEffect(() => {
+        const timer = setInterval(() => setNow(new Date()), 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    const getRemainingTime = (expiryDate: string) => {
+        const diff = new Date(expiryDate).getTime() - now.getTime();
+        if (diff <= 0) return "expired";
+
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+        const parts = [];
+        if (days > 0) parts.push(`${days}d`);
+        if (hours > 0) parts.push(`${hours}h`);
+        if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
+
+        return parts.join(" ");
+    };
 
     if (loading && !metrics) {
         return (
@@ -284,19 +324,20 @@ export default function AdminDashboard() {
 
     return (
         <div className="flex-1 overflow-y-auto bg-gray-50 p-8">
-            <div className="max-w-6xl mx-auto">
-                <div className="flex items-center justify-between mb-8">
+            <div className="max-w-6xl mx-auto space-y-8">
+                <div className="flex items-center justify-between">
                     <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
                     <button
-                        onClick={fetchMetrics}
+                        onClick={() => { fetchMetrics(); fetchBlockedUsers(); }}
                         className="p-2 text-gray-500 hover:text-blue-600 transition"
                     >
-                        <ArrowPathIcon className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                        <ArrowPathIcon className={`w-5 h-5 ${loading || isFetchingBlocked ? 'animate-spin' : ''}`} />
                     </button>
                 </div>
 
                 {/* METRICS GRID */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* ... existing metrics grid content ... */}
                     <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
                         <div className="flex items-center gap-4 mb-2">
                             <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
@@ -331,7 +372,7 @@ export default function AdminDashboard() {
                 {/* USER SEARCH & MANAGEMENT */}
                 <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 overflow-hidden">
                     <h2 className="text-lg font-semibold text-gray-900 mb-4">User Management</h2>
-
+                    {/* ... existing search content ... */}
                     <form onSubmit={handleSearch} className="flex gap-4 mb-8">
                         <input
                             type="text"
@@ -380,7 +421,7 @@ export default function AdminDashboard() {
                                                     user.status === 'blocked' ? 'bg-red-100 text-red-700' :
                                                         'bg-gray-100 text-gray-700'
                                                     }`}>
-                                                    {user.status}
+                                                    {user.status} {user.status === 'blocked' && user.block_expires_at && `(${getRemainingTime(user.block_expires_at)})`}
                                                 </span>
                                             </td>
                                             <td className="py-4 pl-4 text-right">
@@ -418,6 +459,74 @@ export default function AdminDashboard() {
                     {searchResults.length === 0 && hasSearched && !isSearching && searchQuery && (
                         <div className="text-center py-12 text-gray-400">
                             No users found for "{searchQuery}"
+                        </div>
+                    )}
+                </div>
+
+                {/* BLOCKED USERS LIST */}
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 overflow-hidden">
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                            <ShieldExclamationIcon className="w-6 h-6 text-red-600" />
+                            <h2 className="text-lg font-semibold text-gray-900">Blocked List</h2>
+                        </div>
+                        {blockedUsers.length > 0 && (
+                            <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold">
+                                {blockedUsers.length} Users
+                            </span>
+                        )}
+                    </div>
+
+                    {isFetchingBlocked && blockedUsers.length === 0 ? (
+                        <div className="text-center py-12">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto"></div>
+                        </div>
+                    ) : blockedUsers.length > 0 ? (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="border-b border-gray-100 text-sm text-gray-400 font-medium">
+                                        <th className="pb-4 pr-4">User</th>
+                                        <th className="pb-4 px-4 text-center">Role</th>
+                                        <th className="pb-4 px-4 text-center">Remaining Time</th>
+                                        <th className="pb-4 pl-4 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {blockedUsers.map(user => (
+                                        <tr key={user.id} className="text-sm group hover:bg-gray-50/50">
+                                            <td className="py-4 pr-4">
+                                                <div className="font-medium text-gray-900">{user.email}</div>
+                                                <div className="text-xs text-gray-500 font-mono">{user.id}</div>
+                                            </td>
+                                            <td className="py-4 px-4 text-center">
+                                                <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                    {user.role}
+                                                </span>
+                                            </td>
+                                            <td className="py-4 px-4 text-center">
+                                                <span className="text-red-600 font-medium">
+                                                    {getRemainingTime(user.block_expires_at)}
+                                                </span>
+                                            </td>
+                                            <td className="py-4 pl-4 text-right">
+                                                <button
+                                                    onClick={() => handleBlockUser(user.id, true, user.email)}
+                                                    disabled={updatingUserId === user.id}
+                                                    className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-30"
+                                                    title="Restore User"
+                                                >
+                                                    <CheckCircleIcon className="w-5 h-5" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                            No blocked users at the moment.
                         </div>
                     )}
                 </div>

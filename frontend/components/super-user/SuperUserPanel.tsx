@@ -385,14 +385,32 @@ export default function SuperUserPanel() {
                                     </div>
 
                                     {admin.role === 'admin' && (
-                                        <button
-                                            onClick={() => handleUpdateRole(admin.id, admin.email, 'user')}
-                                            disabled={!!updatingUserId}
-                                            className="text-gray-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition opacity-0 group-hover:opacity-100"
-                                            title="Demote to User"
-                                        >
-                                            <UserMinusIcon className="w-5 h-5" />
-                                        </button>
+                                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                                onClick={() => handleUpdateStatus(admin.id, admin.email, 'blocked')}
+                                                disabled={!!updatingUserId}
+                                                className="text-gray-400 hover:text-orange-600 p-1.5 rounded-lg hover:bg-orange-50 transition"
+                                                title="Block Admin"
+                                            >
+                                                <NoSymbolIcon className="w-5 h-5" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleUpdateStatus(admin.id, admin.email, 'banned')}
+                                                disabled={!!updatingUserId}
+                                                className="text-gray-400 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 transition"
+                                                title="Ban Admin"
+                                            >
+                                                <ShieldCheckIcon className="w-5 h-5" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleUpdateRole(admin.id, admin.email, 'user')}
+                                                disabled={!!updatingUserId}
+                                                className="text-gray-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition"
+                                                title="Demote to User"
+                                            >
+                                                <UserMinusIcon className="w-5 h-5" />
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                             ))}

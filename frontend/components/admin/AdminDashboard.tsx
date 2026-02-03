@@ -429,12 +429,19 @@ export default function AdminDashboard() {
                                                 </span>
                                             </td>
                                             <td className="py-4 px-4 text-center">
-                                                <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${user.status === 'active' ? 'bg-green-100 text-green-700' :
-                                                    user.status === 'blocked' ? 'bg-red-100 text-red-700' :
-                                                        'bg-gray-100 text-gray-700'
-                                                    }`}>
-                                                    {user.status} {user.status === 'blocked' && user.block_expires_at && `(${getRemainingTime(user.block_expires_at)})`}
-                                                </span>
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${user.status === 'active' ? 'bg-green-100 text-green-700' :
+                                                        user.status === 'blocked' ? 'bg-red-100 text-red-700' :
+                                                            'bg-gray-100 text-gray-700'
+                                                        }`}>
+                                                        {user.status} {user.status === 'blocked' && user.block_expires_at && `(${getRemainingTime(user.block_expires_at)})`}
+                                                    </span>
+                                                    {user.suggested_role && (
+                                                        <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-md uppercase tracking-tighter">
+                                                            Pending {user.suggested_role}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="py-4 pl-4 text-right">
                                                 <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -453,9 +460,9 @@ export default function AdminDashboard() {
                                                             userEmail: user.email,
                                                             targetRole: user.role === 'admin' ? 'user' : 'admin'
                                                         })}
-                                                        disabled={updatingUserId === user.id || user.role === 'super_user'}
-                                                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition disabled:opacity-30"
-                                                        title={user.role === 'admin' ? 'Suggest Demote' : 'Suggest Promote'}
+                                                        disabled={updatingUserId === user.id || user.role === 'super_user' || !!user.suggested_role}
+                                                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition disabled:opacity-30 disabled:grayscale"
+                                                        title={user.suggested_role ? `Pending ${user.suggested_role}` : (user.role === 'admin' ? 'Suggest Demote' : 'Suggest Promote')}
                                                     >
                                                         {user.role === 'admin' ? <UserMinusIcon className="w-5 h-5" /> : <UserPlusIcon className="w-5 h-5" />}
                                                     </button>

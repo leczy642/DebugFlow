@@ -210,6 +210,21 @@ export default function SuperUserPanel() {
         }
     }, []);
 
+    const handleDenyPromotion = async (userId: string, userEmail: string) => {
+        if (!confirm(`Are you sure you want to deny the promotion request for ${userEmail}?`)) return;
+
+        setUpdatingUserId(userId);
+        try {
+            await api.delete(`/api/super-user/promotion-request/${userId}`);
+            await fetchData();
+            alert("Promotion request denied.");
+        } catch (err) {
+            alert("Failed to deny promotion request");
+        } finally {
+            setUpdatingUserId(null);
+        }
+    };
+
     const handleSaveGlobalContext = async () => {
         setSaving(true);
         try {
@@ -368,7 +383,7 @@ export default function SuperUserPanel() {
                             <h2 className="text-lg font-semibold text-gray-900">Current Administration</h2>
                         </div>
 
-                        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+                        <div className="space-y-3 max-h-[215px] overflow-y-auto pr-2 custom-scrollbar">
                             {admins.map(admin => (
                                 <div key={admin.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-200 group">
                                     <div>
@@ -634,6 +649,14 @@ export default function SuperUserPanel() {
                                                         title="Ban User"
                                                     >
                                                         <ShieldCheckIcon className="w-5 h-5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDenyPromotion(user.id, user.email)}
+                                                        disabled={!!updatingUserId}
+                                                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition disabled:opacity-30"
+                                                        title="Deny Promotion Request"
+                                                    >
+                                                        <XMarkIcon className="w-5 h-5" />
                                                     </button>
                                                 </div>
                                             </td>

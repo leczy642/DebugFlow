@@ -174,6 +174,17 @@ export async function setUserSuggestion(uid, role, reason) {
 }
 
 /**
+ * Clears any pending role suggestion for a user.
+ */
+export async function clearUserSuggestion(uid) {
+    const { rows } = await pool.query(
+        `UPDATE users SET suggested_role = NULL, suggestion_reason = NULL WHERE id = $1 RETURNING *`,
+        [uid]
+    );
+    return rows[0];
+}
+
+/**
  * Updates user permissions.
  */
 export async function updateUserPermissions(uid, permissions) {

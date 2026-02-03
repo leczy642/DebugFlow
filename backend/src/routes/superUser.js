@@ -18,7 +18,8 @@ import {
     updateGlobalSetting,
     getGlobalSetting,
     transferSuperUser,
-    getPromotionRequests
+    getPromotionRequests,
+    clearUserSuggestion
 } from "../db/models/user_queries.js";
 
 const router = express.Router();
@@ -205,8 +206,22 @@ router.post("/transfer/initiate", async (req, res) => {
     }
 });
 
-// Note: Target admin accepts the transfer. This route actually belongs in admin.js 
-// or needs special handling since the super-user middleware blocks it.
-// Let's create a special endpoint in this file that checks for the pending transfer instead of the role.
+/**
+ * DELETE /api/super-user/promotion-request/:id
+ * Clears/denies a promotion request.
+ */
+router.delete("/promotion-request/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+        const user = await clearUserSuggestion(id);
+        if (!user) return res.status(404).json({ error: "User not found" });
+
+        await logAuditEvent(req.user.uid, id, 'PROMOTION_DENIED', {});
+        res.json({ success: true, message: "Promotion request denied and cleared." });
+    } catch (err) {
+        logger.error("Deny Promotion Request Failed", { error: err.message });
+        res.status(500).json({ error: "Failed to deny promotion request" });
+    }
+});
 
 export default router;

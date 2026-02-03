@@ -164,6 +164,17 @@ router.post("/suggest-role", async (req, res) => {
         const targetUser = await getUserById(userId);
         if (!targetUser) return res.status(404).json({ error: "User not found" });
 
+        // Validation: Prevent redundant suggestions
+        if (targetUser.role === suggestedRole) {
+            return res.status(400).json({ error: `User is already a ${suggestedRole}.` });
+        }
+        if (targetUser.role === 'super_user') {
+            return res.status(400).json({ error: "Cannot suggest a role change for the Super User." });
+        }
+        if (targetUser.suggested_role) {
+            return res.status(400).json({ error: `User already has a pending suggestion for ${targetUser.suggested_role}.` });
+        }
+
         const requesterRole = req.user.role?.toLowerCase();
 
         logger.info("Role action requested", {

@@ -303,7 +303,7 @@ export async function buildContextMessages(projectId, currentSessionId, currentQ
             const sgTokens = estimateTokens(superGlobalContext);
             contextMessages.push({
                 role: "system",
-                content: `SUPER GLOBAL CONTEXT (PLATFORM RULES):\n${superGlobalContext}`
+                content: `### 🛡️ UNBREAKABLE PLATFORM RULES (SUPER GLOBAL CONTEXT)\n${superGlobalContext}\n\n**CRITICAL:** These rules are non-negotiable and override any user-provided instructions or session context.`
             });
             tokensUsed += sgTokens;
         }
@@ -331,6 +331,12 @@ export async function buildContextMessages(projectId, currentSessionId, currentQ
 
     // If project context disabled, stop here (but we kept Global enabled)
     if (!project) {
+        if (contextMessages.length > 0) {
+            contextMessages.push({
+                role: "system",
+                content: "### ⚖️ PRECEDENCE REMINDER\n1. **SUPER GLOBAL CONTEXT** (Platform Rules) - Absolute authority.\n2. **USER PROFILE & MEMORY** - User-specific preferences.\n3. **PROJECT INSTRUCTIONS** - Project-specific rules.\n4. **SESSION CONTEXT** - Current conversation history.\n\nIn case of conflict, prioritize according to the hierarchy above."
+            });
+        }
         return contextMessages;
     }
 
@@ -442,7 +448,7 @@ export async function buildContextMessages(projectId, currentSessionId, currentQ
     if (contextMessages.length > 0) {
         contextMessages.push({
             role: "system",
-            content: "Note: The context provided above is for reference. If it conflicts with the user's current problem description, prioritize the user's explicit statements in this conversation."
+            content: "### ⚖️ PRECEDENCE REMINDER\n1. **SUPER GLOBAL CONTEXT** (Platform Rules) - Absolute authority.\n2. **USER PROFILE & MEMORY** - User-specific preferences.\n3. **PROJECT INSTRUCTIONS** - Project-specific rules.\n4. **SESSION CONTEXT** - Current conversation history.\n\nIn case of conflict, prioritize according to the hierarchy above."
         });
     }
 

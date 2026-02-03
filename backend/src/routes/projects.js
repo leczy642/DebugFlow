@@ -14,6 +14,7 @@ import {
     updateProjectContext,
     setProjectContextEnabled
 } from "../db/models/project_queries.js";
+import { isSGCContained } from "../services/memoryService.js";
 
 const router = express.Router();
 
@@ -108,6 +109,12 @@ router.patch("/:id/context", async (req, res) => {
         // Allow empty string to clear instructions
         if (context_instructions === undefined) {
             return res.status(400).json({ error: "context_instructions is required" });
+        }
+
+        // Validation: Block explicit attempts to override platform rules
+        const forbiddenPatterns = [/ignore.*platform.*rule/i, /override.*super.*global/i, /disregard.*system.*instruction/i];
+        if (forbiddenPatterns.some(p => p.test(context_instructions))) {
+            return res.status(400).json({ error: "Your instructions contain forbidden attempts to override platform-wide rules." });
         }
 
         const updated = await updateProjectContext(req.params.id, context_instructions);

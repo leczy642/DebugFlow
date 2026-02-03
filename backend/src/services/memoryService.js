@@ -9,6 +9,31 @@
 
 import { pool } from "../db/postgres_connect.js";
 import { logger } from "../utils/logger.js";
+import { getGlobalSetting } from "../db/models/user_queries.js";
+
+/**
+ * Normalizes text for comparison (removes punctuation, lowercase)
+ */
+function normalize(text) {
+    if (!text) return "";
+    return text.toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "");
+}
+
+/**
+ * Check if the text is present in the Super Global Context
+ */
+export async function isSGCContained(text) {
+    try {
+        const sgc = await getGlobalSetting('super_global_context');
+        if (!sgc) return false;
+        const normalizedSGC = normalize(sgc);
+        const normalizedText = normalize(text);
+        return normalizedSGC.includes(normalizedText);
+    } catch (err) {
+        logger.warn("SGC check failed during memory validation", { error: err.message });
+        return false;
+    }
+}
 
 // Confidence Thresholds
 const PROMOTION_THRESHOLD = 100;
@@ -34,6 +59,12 @@ export const MemoryStatus = {
  */
 export async function addExplicitMemory(userId, text, type = MemoryType.EXPLICIT) {
     try {
+        // Validation: Prevent SGC duplication/override
+        if (await isSGCContained(text)) {
+            logger.info(`Blocked explicit memory for user ${userId} - content already in Super Global Context`);
+            return { id: null, content: text, status: 'BLOCKED_BY_SGC' };
+        }
+
         const { rows } = await pool.query(
             `INSERT INTO user_context 
              (user_id, content, type, status, confidence, last_used_at)
@@ -54,7 +85,13 @@ export async function addExplicitMemory(userId, text, type = MemoryType.EXPLICIT
  * Starts as CANDIDATE with low score.
  */
 export async function proposeCandidate(userId, text, metadata = {}) {
-    const normalizedText = text.toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "");
+    // Validation: Prevent SGC duplication/override
+    if (await isSGCContained(text)) {
+        logger.debug(`Skipped candidate proposal for user ${userId} - content already in Super Global Context`);
+        return null;
+    }
+
+    const normalizedText = normalize(text);
 
     // Check for similar existing memories (Active or Candidate)
     const { rows: existing } = await pool.query(
@@ -64,7 +101,7 @@ export async function proposeCandidate(userId, text, metadata = {}) {
     );
 
     const similar = existing.find(m => {
-        const existingNormalized = m.content.toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "");
+        const existingNormalized = normalize(m.content);
         return existingNormalized === normalizedText ||
             existingNormalized.includes(normalizedText) ||
             normalizedText.includes(existingNormalized);
@@ -110,8 +147,14 @@ export async function reinforceMemory(memoryId, amount = 20) {
 
         // Promotion check
         if (memory.status === MemoryStatus.CANDIDATE && newConfidence >= PROMOTION_THRESHOLD) {
-            newStatus = MemoryStatus.ACTIVE;
-            logger.info(`Promoted memory ${memoryId} to ACTIVE`);
+            // Final check: Don't promote if it somehow matches SGC now
+            if (await isSGCContained(memory.content)) {
+                logger.info(`Blocked memory promotion ${memoryId} - content now in Super Global Context`);
+                newStatus = MemoryStatus.ARCHIVED;
+            } else {
+                newStatus = MemoryStatus.ACTIVE;
+                logger.info(`Promoted memory ${memoryId} to ACTIVE`);
+            }
         }
 
         const { rows: [updated] } = await pool.query(
@@ -206,5 +249,10 @@ export async function getAllMemories(userId) {
          ORDER BY status, confidence DESC`,
         [userId]
     );
-    return rows;
+
+    // Filter out any that match SGC
+    const sgc = await getGlobalSetting('super_global_context');
+    const normalizedSGC = normalize(sgc);
+
+    return rows.filter(m => !normalizedSGC.includes(normalize(m.content)));
 }

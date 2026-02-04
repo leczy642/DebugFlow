@@ -385,7 +385,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     try {
       const authHeaders = await getAuthHeaders();
-      const res = await fetch("http://localhost:4000/api/chat", {
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+      const res = await fetch(`${apiBaseUrl}/api/chat`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({

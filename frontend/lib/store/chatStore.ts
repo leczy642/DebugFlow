@@ -33,7 +33,7 @@
  */
 import { create } from "zustand";
 import { useUIStore } from "./uiStore";
-import { api, getAuthHeaders } from '@/lib/api';
+import { api, getAuthHeaders, BASE_URL } from '@/lib/api';
 
 type Message = {
   id?: string;
@@ -385,8 +385,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     try {
       const authHeaders = await getAuthHeaders();
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
-      const res = await fetch(`${apiBaseUrl}/api/chat`, {
+      const res = await fetch(`${BASE_URL}/api/chat`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({

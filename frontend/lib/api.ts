@@ -1,6 +1,14 @@
 import { auth } from '@/lib/firebase';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+// Fallback to localhost if no environment variable is set
+const rawBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+
+// Export BASE_URL and ensure it doesn't have a trailing slash for consistency
+export const BASE_URL = rawBaseUrl.endsWith('/') ? rawBaseUrl.slice(0, -1) : rawBaseUrl;
+
+if (process.env.NODE_ENV === 'production' && BASE_URL.includes('localhost')) {
+    console.warn('⚠️ WARNING: API Base URL is still pointing to localhost in production.');
+}
 
 const getAuthToken = async () => {
     const user = auth.currentUser;

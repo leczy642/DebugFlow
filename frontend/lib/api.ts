@@ -10,8 +10,18 @@ const safeRawUrl = typeof rawBaseUrl === 'string' ? rawBaseUrl : 'http://localho
 export const BASE_URL = safeRawUrl.endsWith('/') ? safeRawUrl.slice(0, -1) : safeRawUrl;
 
 // Only log warnings at runtime, not during build
-if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production' && BASE_URL.includes('localhost')) {
-    console.warn('⚠️ WARNING: API Base URL is still pointing to localhost in production.');
+if (typeof window !== 'undefined') {
+    console.log('🔍 DebugFlow Config:', {
+        NODE_ENV: process.env.NODE_ENV,
+        NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
+        NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL,
+        Resolved_BASE_URL: BASE_URL,
+    });
+
+    if (process.env.NODE_ENV === 'production' && BASE_URL.includes('localhost')) {
+        console.warn('⚠️ WARNING: API Base URL is still pointing to localhost in production.',
+            'Please verify your Vercel Environment Variables are set and available to the build environment.');
+    }
 }
 
 const getAuthToken = async () => {
@@ -32,6 +42,7 @@ export const getAuthHeaders = async () => {
 };
 
 export const api = {
+    BASE_URL, // Expose for debugging
     async request(endpoint: string, options: RequestInit = {}) {
         const token = await getAuthToken();
         const headers = {
@@ -55,6 +66,13 @@ export const api = {
         }
 
         if (!response.ok) {
+            // Log configuration on error to help debug production issues
+            console.error('API Request Failed:', {
+                endpoint,
+                status: response.status,
+                BASE_URL, // This reveals what the code is actually using
+                NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL
+            });
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.error || response.statusText);
         }

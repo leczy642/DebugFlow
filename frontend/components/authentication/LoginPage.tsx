@@ -19,6 +19,15 @@ export default function LoginPage() {
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
 
+    // DEBUG: Fetch server-side env vars
+    const [debugInfo, setDebugInfo] = useState<any>(null);
+    useEffect(() => {
+        fetch('/api/debug-env')
+            .then(res => res.json())
+            .then(data => setDebugInfo(data))
+            .catch(err => setDebugInfo({ error: err.message }));
+    }, []);
+
     useEffect(() => {
         if (!authLoading && isAuthenticated) {
             router.replace('/');
@@ -314,6 +323,23 @@ export default function LoginPage() {
                                 <a href="#" className="text-gray-600 underline hover:text-blue-600 transition-colors">Privacy Policy</a>.
                             </p>
                         </form>
+                    </div>
+                </div>
+            </div>
+
+            {/* DEBUG PANEL - TEMPORARY */}
+            <div className="fixed bottom-0 left-0 w-full bg-yellow-50 border-t border-yellow-200 p-4 text-[10px] font-mono overflow-auto max-h-40 z-50">
+                <h3 className="font-bold text-yellow-800">🕵️ DEBUGGER</h3>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <strong className="block text-yellow-700">Client-Side (Browser):</strong>
+                        <div>NEXT_PUBLIC_BACKEND_URL: {process.env.NEXT_PUBLIC_BACKEND_URL || 'undefined'}</div>
+                        <div>API BASE_URL (Computed): {api.BASE_URL || 'undefined'}</div>
+                        {/* Note: we need to expose BASE_URL property on api object or import it */}
+                    </div>
+                    <div>
+                        <strong className="block text-yellow-700">Server-Side (Next.js):</strong>
+                        <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
                     </div>
                 </div>
             </div>

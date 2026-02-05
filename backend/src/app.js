@@ -62,8 +62,35 @@ ensureUsersTableExists().catch(err => {
 // Create Express app
 export const app = express();
 
+// CORS configuration - must be before other middleware
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://debug-flow-frontend.vercel.app',
+  'https://debugflow.vercel.app',
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    // Also allow any vercel preview deployments
+    if (origin.includes('.vercel.app')) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'), false);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+}));
+
+// Handle preflight requests explicitly for all routes
+app.options('*', cors());
+
 // Global middleware
-app.use(cors({ origin: true }));               // Enable CORS
 app.use(express.json({ limit: '10mb' }));      // Parse JSON bodies
 app.use(cookieParser());                       // Parse cookies
 app.use(requestLogger(logger));             // Optional request logging

@@ -18,15 +18,25 @@ const firebaseConfig = {
 // We check getApps().length to prevent multiple initializations during HMR (Hot Module Replacement)
 // We also check for configuration to prevent crashes during static generation in Vercel if env vars are missing
 let app;
+const isBuildTime = !firebaseConfig.apiKey;
+
 if (getApps().length > 0) {
     app = getApp();
 } else if (firebaseConfig.apiKey) {
     app = initializeApp(firebaseConfig);
 } else {
     // Fallback if no firebase config is found during build
-    // This allows the build to finish, but auth will fail at runtime if vars are missing
-    console.warn("⚠️ Firebase configuration missing during build/initialization.");
-    app = initializeApp(firebaseConfig);
+    // We initialize with a "mock" app only to prevent following Firebase calls from crashing the build
+    // Auth won't work in this state, but the build will finish.
+    console.warn("⚠️ Firebase configuration missing. Using dummy initialization for build resilience.");
+    app = initializeApp({
+        apiKey: "mock-key",
+        authDomain: "mock.firebaseapp.com",
+        projectId: "mock-project",
+        storageBucket: "mock.appspot.com",
+        messagingSenderId: "000000000000",
+        appId: "1:000000000000:web:0000000000000000000000"
+    });
 }
 
 // Initialize Firebase Auth

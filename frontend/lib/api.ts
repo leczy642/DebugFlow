@@ -3,10 +3,14 @@ import { auth } from '@/lib/firebase';
 // Fallback to localhost if no environment variable is set
 const rawBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
 
-// Export BASE_URL and ensure it doesn't have a trailing slash for consistency
-export const BASE_URL = rawBaseUrl.endsWith('/') ? rawBaseUrl.slice(0, -1) : rawBaseUrl;
+// Ensure we have a string even if something goes wrong with env vars during build
+const safeRawUrl = typeof rawBaseUrl === 'string' ? rawBaseUrl : 'http://localhost:4000';
 
-if (process.env.NODE_ENV === 'production' && BASE_URL.includes('localhost')) {
+// Export BASE_URL and ensure it doesn't have a trailing slash for consistency
+export const BASE_URL = safeRawUrl.endsWith('/') ? safeRawUrl.slice(0, -1) : safeRawUrl;
+
+// Only log warnings at runtime, not during build
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production' && BASE_URL.includes('localhost')) {
     console.warn('⚠️ WARNING: API Base URL is still pointing to localhost in production.');
 }
 

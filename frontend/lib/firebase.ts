@@ -16,7 +16,19 @@ const firebaseConfig = {
 };
 // Initialize Firebase
 // We check getApps().length to prevent multiple initializations during HMR (Hot Module Replacement)
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+// We also check for configuration to prevent crashes during static generation in Vercel if env vars are missing
+let app;
+if (getApps().length > 0) {
+    app = getApp();
+} else if (firebaseConfig.apiKey) {
+    app = initializeApp(firebaseConfig);
+} else {
+    // Fallback if no firebase config is found during build
+    // This allows the build to finish, but auth will fail at runtime if vars are missing
+    console.warn("⚠️ Firebase configuration missing during build/initialization.");
+    app = initializeApp(firebaseConfig);
+}
+
 // Initialize Firebase Auth
 const auth = getAuth(app);
 // Configure Social Providers

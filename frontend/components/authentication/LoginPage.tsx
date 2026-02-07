@@ -9,6 +9,7 @@ import { signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
 import { auth, googleProvider, githubProvider } from '@/lib/firebase';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/hooks/useAuth';
+import SimpleApiTest from '../simpleApiTest/SimpleApiTest';
 
 export default function LoginPage() {
     const router = useRouter();
@@ -216,7 +217,8 @@ export default function LoginPage() {
         }
     };
 
-    console.log('API_URL:', process.env.NEXT_PUBLIC_API_BASE_URL);
+    //debugging only
+    //console.log('API_URL:', process.env.NEXT_PUBLIC_API_BASE_URL);
 
     return (
         <div className="w-full min-h-screen bg-gray-50 flex items-center justify-center p-4 sm:p-6 lg:p-8">
@@ -338,6 +340,7 @@ export default function LoginPage() {
                         <div>NEXT_PUBLIC_BACKEND_URL: {process.env.NEXT_PUBLIC_BACKEND_URL || 'undefined'}</div>
                         <div>API BASE_URL (Computed): {api.BASE_URL || 'undefined'}</div>
                         {/* Note: we need to expose BASE_URL property on api object or import it */}
+                        <div><p>SimpleApiTest:</p><SimpleApiTest /></div>
                     </div>
                     <div>
                         <strong className="block text-yellow-700">Server-Side (Next.js):</strong>

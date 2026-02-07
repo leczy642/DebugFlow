@@ -216,6 +216,8 @@ export default function LoginPage() {
         }
     };
 
+    console.log('API_URL:', process.env.NEXT_PUBLIC_API_BASE_URL);
+
     return (
         <div className="w-full min-h-screen bg-gray-50 flex items-center justify-center p-4 sm:p-6 lg:p-8">
             <div className="w-full max-w-md">

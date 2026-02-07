@@ -2,7 +2,11 @@ import serverless from 'serverless-http';
 import { app } from './src/app.js';
 
 // Wrap the Express app with serverless-http
-const handler = serverless(app);
+const serverlessHandler = serverless(app);
 
 // Export the handler for AWS Lambda
-export { handler };
+export const handler = async (event, context) => {
+    // CRITICAL: preventative measure for database connections preventing the lambda from finishing
+    context.callbackWaitsForEmptyEventLoop = false;
+    return serverlessHandler(event, context);
+};

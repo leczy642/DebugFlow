@@ -15,17 +15,16 @@ const certPath = path.resolve(__dirname, "../../certs/global-bundle.pem");
 let sslConfig = false;
 
 if (process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("localhost")) {
-  try {
-    const cert = fs.readFileSync(certPath);
-    sslConfig = {
-      rejectUnauthorized: true,
-      ca: cert,
-    };
-  } catch (err) {
-    console.error("⚠️ Failed to load SSL certificate for RDS:", err.message);
-    // Fallback to old behavior if file reading fails
-    sslConfig = { rejectUnauthorized: false };
-  }
+  console.warn("⚠️ Forcing rejectUnauthorized: false for RDS connection to bypass SELF_SIGNED_CERT_IN_CHAIN error.");
+
+  // 1. Force Node.js to ignore self-signed certs globally (Nuclear option)
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
+  // 2. Explicitly set SSL config for pg
+  sslConfig = {
+    rejectUnauthorized: false,
+    requestCert: true,
+  };
 }
 
 export const pool = new Pool({

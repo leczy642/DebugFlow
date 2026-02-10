@@ -50,6 +50,7 @@ import superUserRouter from './routes/superUser.js';
 
 // User queries
 import { ensureUsersTableExists } from './db/models/user_queries.js';
+import { pool } from './db/postgres_connect.js';
 
 // Load environment variables
 dotenv.config();
@@ -102,6 +103,54 @@ app.get('/health', (req, res) => {
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
   });
+});
+
+// Database Debug Route (Unauthenticated for diagnostics)
+app.get('/debug-db', async (req, res) => {
+  const start = Date.now();
+  try {
+    const { rows } = await pool.query('SELECT NOW() as now, version()');
+    res.json({
+      success: true,
+      message: "Database is reachable!",
+      time_on_db: rows[0].now,
+      version: rows[0].version,
+      latency: `${Date.now() - start}ms`,
+      env_db_set: !!process.env.DATABASE_URL,
+      db_is_localhost: process.env.DATABASE_URL?.includes('localhost')
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: "Database connection failed",
+      error: err.message,
+      code: err.code,
+      latency: `${Date.now() - start}ms`,
+      env_db_set: !!process.env.DATABASE_URL,
+    });
+  }
+});
+
+// Internet Debug Route (Unauthenticated for diagnostics)
+app.get('/debug-internet', async (req, res) => {
+  const start = Date.now();
+  try {
+    const response = await fetch('https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com');
+    const data = await response.json();
+    res.json({
+      success: true,
+      message: "Internet is reachable!",
+      keys_count: Object.keys(data).length,
+      latency: `${Date.now() - start}ms`
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: "Internet access failed",
+      error: err.message,
+      latency: `${Date.now() - start}ms`
+    });
+  }
 });
 
 // using the API routes

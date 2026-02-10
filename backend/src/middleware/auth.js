@@ -57,10 +57,24 @@ async function authenticateToken(req, res, next) {
   //console.log(`idToken: ${idToken}`);
 
   try {
-    const decodedToken = await auth.verifyIdToken(idToken);
+    console.log('🔐 Verifying Firebase ID token...');
+
+    // Add a race to prevent verifyIdToken from hanging forever
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Firebase verification timeout')), 8000)
+    );
+
+    const decodedToken = await Promise.race([
+      auth.verifyIdToken(idToken),
+      timeoutPromise
+    ]);
+
+    console.log(`✅ Token verified for: ${decodedToken.email}`);
 
     // 5. Fetch or create user in our local database to get role/status
+    console.log(`📂 Fetching user from DB: ${decodedToken.uid}`);
     let dbUser = await getUserById(decodedToken.uid);
+    console.log(`✅ User record ${dbUser ? 'found' : 'not found'}`);
 
     if (!dbUser) {
       // Automatic bootstrapping if this is the first user or designated super user
@@ -160,8 +174,16 @@ async function authenticateToken(req, res, next) {
     next();
 
   } catch (error) {
-    console.error('Firebase token verification failed:', error.message);
-    return res.status(401).json({ error: 'Invalid ID token' });
+    if (error.message && (error.message.includes('token') || error.message.includes('auth'))) {
+      console.error('Firebase token verification failed:', error.message);
+      return res.status(401).json({ error: 'Invalid ID token' });
+    }
+
+    console.error('Authentication middleware system error:', error);
+    return res.status(500).json({
+      error: 'Internal authentication error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 
 }

@@ -35,6 +35,13 @@ import { create } from "zustand";
 import { useUIStore } from "./uiStore";
 import { api, getAuthHeaders, BASE_URL } from '@/lib/api';
 
+const TIER_LIMITS: Record<string, number> = {
+  'free': 100,
+  'basic': 500,
+  'pro': 2000,
+  'teams': 5000
+};
+
 type Message = {
   id?: string;
   role: "user" | "assistant";
@@ -70,6 +77,9 @@ type ChatStore = {
   awaitingSessionId: string | null;
   isStreaming: boolean;
   abortController: AbortController | null;
+  rateLimitedUntil: string | null;
+  clearRateLimit: () => void;
+  checkUsage: () => Promise<void>;
 
   // Tracks the in-flight request that should be accepted when a reply arrives.
   // When starting a new session or cancelling, this is set to null so older
@@ -124,6 +134,44 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   isStreaming: false,
   abortController: null,
   activeRequestId: null,
+  rateLimitedUntil: null,
+
+  clearRateLimit: () => set({ rateLimitedUntil: null }),
+
+  checkUsage: async () => {
+    try {
+      const profile = await api.get("/api/user/profile/full");
+      const { role, tier, daily_requests_count, rate_limit_reset_at } = profile;
+
+      // Super users are exempt from rate limits
+      if (role === 'super_user') {
+        set({ rateLimitedUntil: null });
+        return;
+      }
+
+      const tierName = (tier || 'free').toLowerCase();
+      const limit = TIER_LIMITS[tierName] || TIER_LIMITS['free'];
+      const currentCount = Number(daily_requests_count) || 0;
+
+      if (currentCount >= limit) {
+        const resetAt = new Date(rate_limit_reset_at || Date.now());
+        let nextResetAt = new Date(resetAt.getTime() + 24 * 60 * 60 * 1000);
+
+        // If the calculated reset time is in the past but the count is still high,
+        // it means the backend hasn't hit its 24h reset window yet.
+        // We ensure a valid future string is set so UI stays disabled.
+        if (nextResetAt.getTime() <= Date.now()) {
+          nextResetAt = new Date(Date.now() + 60 * 60 * 1000); // Fallback to 1 hour from now
+        }
+
+        set({ rateLimitedUntil: nextResetAt.toISOString() });
+      } else {
+        set({ rateLimitedUntil: null });
+      }
+    } catch (err) {
+      console.error("Failed to check usage:", err);
+    }
+  },
 
   loadingSessionId: null,
   sessionLoadRequestId: null,
@@ -133,6 +181,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
      LOAD EXISTING SESSIONS FROM SERVER
   ---------------------------------------------------------------- */
   loadSessions: async () => {
+    await get().checkUsage();
     const sessions = await api.get("/api/sessions");
 
     set({
@@ -274,6 +323,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     SELECT SESSION & LOAD ITS MESSAGES
  ---------------------------------------------------------------- */
   selectSession: async (id: string) => {
+    await get().checkUsage(); // Proactive check on click
+
     // Abort any in-flight session message load to prevent "late" updates
     const prev = get().sessionLoadAbortController;
     if (prev) prev.abort();
@@ -398,8 +449,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       });
 
       if (!res.ok) {
+        if (res.status === 429) {
+          const errorData = await res.json().catch(() => ({}));
+          set({ rateLimitedUntil: errorData.reset_at || new Date(Date.now() + 3600000).toISOString() });
+          throw new Error(errorData.message || "Rate limit exceeded");
+        }
         throw new Error("Failed to send message");
       }
+
+      set({ rateLimitedUntil: null }); // Clear on success
 
       if (!res.body) return;
 
@@ -500,6 +558,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (err.name === 'AbortError') {
         return;
       }
+
       get().receiveMessage("⚠️ Error processing request", requestId);
       set({ isStreaming: false });
     } finally {

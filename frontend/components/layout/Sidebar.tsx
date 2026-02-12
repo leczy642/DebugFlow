@@ -76,7 +76,7 @@ export default function Sidebar() {
         openRenameProject, openDeleteProject,
         activeView, setView
     } = useUIStore();
-    const { user, isAdmin, isSuperUser } = useAuth();
+    const { user, isAdmin, isSuperUser, isAuthenticated } = useAuth();
 
     const firstName = user?.displayName ? user.displayName.split(' ')[0] : 'User';
 
@@ -266,16 +266,18 @@ export default function Sidebar() {
     }, [currentSessionId, dockInput]);
 
     useEffect(() => {
-        loadSessions().catch((err) => console.error("Failed to load sessions:", err));
-        loadProjects().catch((err) => console.error("Failed to load projects:", err));
-    }, [loadSessions, loadProjects]);
+        if (isAuthenticated) {
+            loadSessions().catch((err) => console.error("Failed to load sessions:", err));
+            loadProjects().catch((err) => console.error("Failed to load projects:", err));
+        }
+    }, [loadSessions, loadProjects, isAuthenticated]);
 
     useEffect(() => {
-        if (sidebarOpen) {
+        if (sidebarOpen && isAuthenticated) {
             loadSessions().catch((err) => console.error("Failed to refresh sessions:", err));
             loadProjects().catch((err) => console.error("Failed to refresh projects:", err));
         }
-    }, [sidebarOpen, loadSessions, loadProjects]);
+    }, [sidebarOpen, loadSessions, loadProjects, isAuthenticated]);
 
     const unassignedSessions = sessions.filter(s => !s.project_id);
 

@@ -27,22 +27,20 @@ export async function ensureUsersTableExists() {
         suggestion_reason TEXT,
         block_expires_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT NOW(),
-        last_login TIMESTAMP
+        last_login TIMESTAMP,
+        tier VARCHAR(20) DEFAULT 'free',
+        daily_requests_count INTEGER DEFAULT 0,
+        last_request_at TIMESTAMP,
+        rate_limit_reset_at TIMESTAMP DEFAULT NOW()
       );
     `);
 
         // Migration: check for new columns and add them if missing
         const alterQueries = [
-            `ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(50) DEFAULT 'email'`,
-            `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_oauth_user BOOLEAN DEFAULT FALSE`,
-            `ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_verified BOOLEAN DEFAULT FALSE`,
-            `ALTER TABLE users ADD COLUMN IF NOT EXISTS global_instructions TEXT`,
-            `ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user'`,
-            `ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'`,
-            `ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{}'`,
-            `ALTER TABLE users ADD COLUMN IF NOT EXISTS suggested_role VARCHAR(20)`,
-            `ALTER TABLE users ADD COLUMN IF NOT EXISTS suggestion_reason TEXT`,
-            `ALTER TABLE users ADD COLUMN IF NOT EXISTS block_expires_at TIMESTAMP`
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS tier VARCHAR(20) DEFAULT 'free'`,
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_requests_count INTEGER DEFAULT 0`,
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_request_at TIMESTAMP`,
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS rate_limit_reset_at TIMESTAMP DEFAULT NOW()`
         ];
 
         for (const query of alterQueries) {
@@ -284,4 +282,62 @@ export async function updateGlobalSetting(key, value, actorRole = 'user') {
          ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()`,
         [key, value]
     );
+}
+
+/**
+ * Increments the user's daily request count and updates the last_request_at timestamp.
+ */
+export async function incrementUserRequestCount(uid) {
+    await pool.query(
+        `UPDATE users 
+         SET daily_requests_count = daily_requests_count + 1, 
+             last_request_at = NOW() 
+         WHERE id = $1`,
+        [uid]
+    );
+}
+
+/**
+ * Resets the user's daily request count and updates the rate_limit_reset_at timestamp.
+ */
+export async function resetUserRequestCount(uid) {
+    const { rows } = await pool.query(
+        `UPDATE users 
+         SET daily_requests_count = 0, 
+             rate_limit_reset_at = NOW() 
+         WHERE id = $1 
+         RETURNING *`,
+        [uid]
+    );
+    return rows[0];
+}
+
+/**
+ * Updates a user's tier.
+ */
+export async function updateUserTier(uid, tier) {
+    const { rows } = await pool.query(
+        `UPDATE users SET tier = $1 WHERE id = $2 RETURNING *`,
+        [tier, uid]
+    );
+    return rows[0];
+}
+
+/**
+ * Gets a user's up-to-date usage data, resetting the window if necessary.
+ */
+export async function getUserUsage(uid) {
+    let user = await getUserById(uid);
+    if (!user) return null;
+
+    const now = new Date();
+    const resetAt = new Date(user.rate_limit_reset_at || now);
+    const hoursSinceReset = (now - resetAt) / (1000 * 60 * 60);
+
+    // 24-hour rolling window reset logic
+    if (hoursSinceReset >= 24) {
+        user = await resetUserRequestCount(uid);
+    }
+
+    return user;
 }

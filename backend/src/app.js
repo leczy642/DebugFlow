@@ -35,6 +35,7 @@ import { logger } from './utils/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import authenticateToken from './middleware/auth.js';
+import rateLimiter from './middleware/rateLimiter.js';
 import cookieParser from 'cookie-parser';
 
 // setting up Routers
@@ -50,6 +51,7 @@ import superUserRouter from './routes/superUser.js';
 
 // User queries
 import { ensureUsersTableExists } from './db/models/user_queries.js';
+import { ensureUsageLogsTableExists } from './db/models/usage_queries.js';
 import { pool } from './db/postgres_connect.js';
 
 // Load environment variables
@@ -57,7 +59,11 @@ dotenv.config();
 
 // Ensure database tables exist
 ensureUsersTableExists().catch(err => {
-  logger.error("Database initialization failed", { error: err.message });
+  logger.error("Database initialization (users) failed", { error: err.message });
+});
+
+ensureUsageLogsTableExists().catch(err => {
+  logger.error("Database initialization (usage_logs) failed", { error: err.message });
 });
 
 // Create Express app
@@ -165,10 +171,13 @@ app.get('/protected', authenticateToken, async (req, res) => {
 // using the API routes
 app.use('/api/ingest', ingestRouter);
 app.use('/api/analyze', analyzeRouter);
-app.use('/api/chat', authenticateToken, chatRouter);
-// Mount sessions under /api to match frontend expectations
+
+// Apply rate limiting ONLY to the chat route
+app.use('/api/chat', authenticateToken, rateLimiter, chatRouter);
+
+// Other authenticated routes
 app.use("/api/sessions", authenticateToken, sessionsRouter);
-app.use("/api/messages", messagesRouter);
+app.use("/api/messages", authenticateToken, messagesRouter);
 app.use("/api/projects", authenticateToken, projectsRouter);
 app.use("/api/user", authenticateToken, userRouter);
 app.use("/api/admin", authenticateToken, adminRouter);

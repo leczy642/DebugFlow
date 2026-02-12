@@ -44,6 +44,9 @@ export default function HomePage() {
     if (!loading && !isAuthenticated) {
       router.replace('/login');
     }
+    if (isAuthenticated) {
+      useChatStore.getState().checkUsage();
+    }
   }, [isAuthenticated, loading, router]);
 
   // Show loading state while checking authentication

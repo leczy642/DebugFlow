@@ -151,7 +151,9 @@ export default function AdminDashboard() {
     const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
     const [currentUser, setCurrentUser] = useState<any>(null);
     const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+    const [usageStats, setUsageStats] = useState<any>(null);
     const [isFetchingBlocked, setIsFetchingBlocked] = useState(false);
+    const [isFetchingUsage, setIsFetchingUsage] = useState(false);
     const [now, setNow] = useState(new Date());
 
     // Modal State
@@ -208,6 +210,18 @@ export default function AdminDashboard() {
             console.error("Failed to fetch blocked users", err);
         } finally {
             setIsFetchingBlocked(false);
+        }
+    }, []);
+
+    const fetchUsageStats = useCallback(async () => {
+        setIsFetchingUsage(true);
+        try {
+            const data = await api.get('/api/admin/usage/stats');
+            setUsageStats(data);
+        } catch (err) {
+            console.error("Failed to fetch usage stats", err);
+        } finally {
+            setIsFetchingUsage(false);
         }
     }, []);
 
@@ -302,7 +316,8 @@ export default function AdminDashboard() {
         fetchMetrics();
         fetchProfile();
         fetchBlockedUsers();
-    }, [fetchMetrics, fetchProfile, fetchBlockedUsers]);
+        fetchUsageStats();
+    }, [fetchMetrics, fetchProfile, fetchBlockedUsers, fetchUsageStats]);
 
     // Update real-time clock for countdowns
     useEffect(() => {
@@ -340,10 +355,10 @@ export default function AdminDashboard() {
                 <div className="flex items-center justify-between">
                     <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
                     <button
-                        onClick={() => { fetchMetrics(); fetchBlockedUsers(); }}
+                        onClick={() => { fetchMetrics(); fetchBlockedUsers(); fetchUsageStats(); }}
                         className="p-2 text-gray-500 hover:text-blue-600 transition"
                     >
-                        <ArrowPathIcon className={`w-5 h-5 ${loading || isFetchingBlocked ? 'animate-spin' : ''}`} />
+                        <ArrowPathIcon className={`w-5 h-5 ${loading || isFetchingBlocked || isFetchingUsage ? 'animate-spin' : ''}`} />
                     </button>
                 </div>
 
@@ -378,6 +393,21 @@ export default function AdminDashboard() {
                             <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">System Health</h3>
                         </div>
                         <p className="text-3xl font-bold text-gray-900">{metrics?.health?.database === 'healthy' ? 'Good' : 'Warning'}</p>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                        <div className="flex items-center gap-4 mb-2">
+                            <div className="p-2 bg-orange-100 rounded-lg text-orange-600">
+                                <SignalIcon className="w-6 h-6" />
+                            </div>
+                            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">API Traffic (24h)</h3>
+                        </div>
+                        <p className="text-3xl font-bold text-gray-900">{usageStats?.stats?.total_requests_24h || 0}</p>
+                        {usageStats?.stats?.blocked_requests_24h > 0 && (
+                            <p className="text-xs text-red-500 mt-1">
+                                {usageStats.stats.blocked_requests_24h} blocked attempts
+                            </p>
+                        )}
                     </div>
                 </div>
 
@@ -546,6 +576,79 @@ export default function AdminDashboard() {
                     ) : (
                         <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
                             No blocked users at the moment.
+                        </div>
+                    )}
+                </div>
+
+                {/* USAGE MONITORING SECTION */}
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 overflow-hidden">
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                            <SignalIcon className="w-6 h-6 text-blue-600" />
+                            <h2 className="text-lg font-semibold text-gray-900">Highest Usage (Top 10)</h2>
+                        </div>
+                        <span className="text-xs text-gray-400 font-medium italic">
+                            Updated every refresh
+                        </span>
+                    </div>
+
+                    {isFetchingUsage && !usageStats ? (
+                        <div className="text-center py-12">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                        </div>
+                    ) : usageStats?.top_users?.length > 0 ? (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="border-b border-gray-100 text-sm text-gray-400 font-medium">
+                                        <th className="pb-4 pr-4">User</th>
+                                        <th className="pb-4 px-4 text-center">Tier</th>
+                                        <th className="pb-4 px-4 text-center">Requests Today</th>
+                                        <th className="pb-4 pl-4 text-right">Reset At</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {usageStats.top_users.map((user: any) => (
+                                        <tr key={user.id} className="text-sm group hover:bg-gray-50/50">
+                                            <td className="py-4 pr-4">
+                                                <div className="font-medium text-gray-900">{user.email}</div>
+                                                <div className="text-xs text-gray-500 font-mono">{user.id}</div>
+                                            </td>
+                                            <td className="py-4 px-4 text-center">
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${user.tier === 'teams' ? 'bg-indigo-100 text-indigo-700' :
+                                                    user.tier === 'pro' ? 'bg-purple-100 text-purple-700' :
+                                                        user.tier === 'basic' ? 'bg-blue-100 text-blue-700' :
+                                                            'bg-gray-100 text-gray-700'
+                                                    }`}>
+                                                    {user.tier || 'free'}
+                                                </span>
+                                            </td>
+                                            <td className="py-4 px-4 text-center">
+                                                <div className="flex flex-col items-center">
+                                                    <span className={`font-bold ${user.daily_requests_count > 80 ? 'text-red-600' : 'text-gray-900'}`}>
+                                                        {user.daily_requests_count}
+                                                    </span>
+                                                    <div className="w-20 h-1 bg-gray-100 rounded-full mt-1 overflow-hidden">
+                                                        <div
+                                                            className={`h-full transition-all duration-500 ${user.daily_requests_count > 80 ? 'bg-red-500' : 'bg-blue-500'}`}
+                                                            style={{ width: `${Math.min(100, (user.daily_requests_count / 100) * 100)}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="py-4 pl-4 text-right">
+                                                <span className="text-gray-500 text-xs">
+                                                    {user.rate_limit_reset_at ? new Date(user.rate_limit_reset_at).toLocaleString() : 'N/A'}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="text-center py-12 text-gray-400">
+                            No usage data recorded yet.
                         </div>
                     )}
                 </div>

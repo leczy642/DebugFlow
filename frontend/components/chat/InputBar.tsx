@@ -7,6 +7,7 @@ import { useUIStore } from "../../lib/store/uiStore";
 import { ArrowUpIcon, StopIcon } from "@heroicons/react/24/solid";
 import { EllipsisVerticalIcon } from "@heroicons/react/24/outline";
 import SessionActionsDropdown from "./SessionActionsDropdown";
+import { useAuth } from "@/lib/hooks/useAuth";
 
 export default function InputBar() {
     const [text, setText] = useState("");
@@ -25,6 +26,10 @@ export default function InputBar() {
         openRenameSession, openDeleteSession, openAddToProject
     } = useUIStore();
 
+    const rateLimitedUntil = useChatStore((s) => s.rateLimitedUntil);
+    const clearRateLimit = useChatStore((s) => s.clearRateLimit);
+    const [hoursLeft, setHoursLeft] = useState<number | null>(null);
+
     const projects = useChatStore((s) => s.projects);
     const sessions = useChatStore((s) => s.sessions);
     const selectedProjectId = useChatStore((s) => s.selectedProjectId);
@@ -35,6 +40,40 @@ export default function InputBar() {
 
     const [dropdownSessionId, setDropdownSessionId] = useState<string | null>(null);
     const [dropdownAbove, setDropdownAbove] = useState(false);
+
+    // Rate Limit Countdown & Auto-Clear
+    useEffect(() => {
+        if (!rateLimitedUntil) {
+            setHoursLeft(null);
+            return;
+        }
+
+        const updateCountdown = () => {
+            const now = new Date();
+            const resetAt = new Date(rateLimitedUntil);
+            const msRemaining = resetAt.getTime() - now.getTime();
+
+            if (msRemaining <= 0) {
+                clearRateLimit();
+                setHoursLeft(null);
+            } else {
+                setHoursLeft(Math.max(0, Math.ceil(msRemaining / (1000 * 60 * 60))));
+            }
+        };
+
+        updateCountdown();
+        const interval = setInterval(updateCountdown, 1000 * 60); // Update every minute
+        return () => clearInterval(interval);
+    }, [rateLimitedUntil, clearRateLimit]);
+
+    const { user, isAdmin, isSuperUser, isAuthenticated, loading: authLoading } = useAuth();
+
+    // Initial check on mount for redundancy
+    useEffect(() => {
+        if (isAuthenticated && !authLoading) {
+            useChatStore.getState().checkUsage();
+        }
+    }, [isAuthenticated, authLoading]);
 
     // Clear the local input text when entering centered mode
     useEffect(() => {
@@ -143,6 +182,16 @@ export default function InputBar() {
                     )}
 
                     <div className="relative">
+                        {rateLimitedUntil && (
+                            <div className="absolute -bottom-12 left-0 animate-in fade-in slide-in-from-top-2 duration-300 z-50 w-full flex justify-start">
+                                <div className="bg-red-50 border border-red-200 text-red-600 text-[13px] font-semibold px-4 py-2 rounded-xl shadow-md flex items-center gap-2">
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <span>You have reached your usage limit, please try again after <strong>{hoursLeft || '1'} hours</strong></span>
+                                </div>
+                            </div>
+                        )}
                         <textarea
                             className="w-full min-h-[110px] max-h-64 resize-none
                          border border-gray-300 rounded-xl
@@ -157,7 +206,7 @@ export default function InputBar() {
                                     handleSend();
                                 }
                             }}
-                            disabled={isAwaitingResponse}
+                            disabled={isAwaitingResponse || !!rateLimitedUntil}
                         />
 
                         {isAwaitingResponse ? (
@@ -172,7 +221,7 @@ export default function InputBar() {
                         ) : (
                             <button
                                 onClick={handleSend}
-                                disabled={!text.trim()}
+                                disabled={!text.trim() || !!rateLimitedUntil}
                                 className="absolute right-2 bottom-0 -translate-y-1/2
                            bg-blue-600 text-white p-2 rounded-lg
                            hover:bg-blue-700 disabled:bg-gray-300"
@@ -245,6 +294,16 @@ export default function InputBar() {
     return (
         <div className="p-4 bg-white">
             <div className="relative max-w-4xl mx-auto">
+                {rateLimitedUntil && (
+                    <div className="absolute -top-12 left-0 animate-in fade-in slide-in-from-bottom-2 duration-300 z-50">
+                        <div className="bg-red-50 border border-red-200 text-red-600 text-[13px] font-semibold px-4 py-2 rounded-xl shadow-md flex items-center gap-2">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span>You have reached your usage limit, please try again after <strong>{hoursLeft || '1'} hours</strong></span>
+                        </div>
+                    </div>
+                )}
                 <textarea
                     className="w-full min-h-[110px] border border-gray-300 rounded-xl
                      py-3 pl-4 pr-12 bg-gray-50 resize-none
@@ -258,7 +317,7 @@ export default function InputBar() {
                             handleSend();
                         }
                     }}
-                    disabled={isAwaitingResponse}
+                    disabled={isAwaitingResponse || !!rateLimitedUntil}
                 />
 
                 {isAwaitingResponse ? (
@@ -273,7 +332,7 @@ export default function InputBar() {
                 ) : (
                     <button
                         onClick={handleSend}
-                        disabled={!text.trim()}
+                        disabled={!text.trim() || !!rateLimitedUntil}
                         className="absolute right-2 bottom-0 -translate-y-1/2
                        bg-blue-600 text-white p-2 rounded-lg
                        hover:bg-blue-700 disabled:bg-gray-300"

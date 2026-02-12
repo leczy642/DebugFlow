@@ -8,6 +8,9 @@ export interface UserProfile {
     status: 'active' | 'blocked' | 'banned';
     permissions: Record<string, boolean>;
     global_instructions?: string;
+    tier?: string;
+    daily_requests_count?: number;
+    rate_limit_reset_at?: string;
 }
 
 export function useAuth() {

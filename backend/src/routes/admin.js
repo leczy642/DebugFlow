@@ -18,6 +18,10 @@ import {
     getUserById,
     updateUserRole
 } from "../db/models/user_queries.js";
+import {
+    getTopUsersByUsage,
+    getUsageStatSummary
+} from "../db/models/usage_queries.js";
 
 const router = express.Router();
 
@@ -250,6 +254,25 @@ router.post("/self-demote", async (req, res) => {
     } catch (err) {
         logger.error("Self-demotion Failed", { error: err.message });
         res.status(500).json({ error: "Failed to demote self" });
+    }
+});
+
+/**
+ * GET /api/admin/usage/stats
+ * Returns top users by usage and overall API stats.
+ */
+router.get("/usage/stats", async (req, res) => {
+    try {
+        const topUsers = await getTopUsersByUsage(10);
+        const usageStats = await getUsageStatSummary();
+
+        res.json({
+            top_users: topUsers,
+            stats: usageStats
+        });
+    } catch (err) {
+        logger.error("Usage Stats Fetch Failed", { error: err.message });
+        res.status(500).json({ error: "Failed to fetch usage stats" });
     }
 });
 

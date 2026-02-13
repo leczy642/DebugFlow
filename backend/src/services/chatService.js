@@ -19,6 +19,7 @@ export async function chatWithAI(messages) {
 
   // Extract the actual AI reply
   //safely return response using optional chaining
+  //knowing the shape of messages would help you understand below
   return response.choices?.[0]?.message?.content
   //return response.choices[0].message.content
 }

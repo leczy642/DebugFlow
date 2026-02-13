@@ -390,8 +390,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // This ensures linear conversation history.
     // If skipUserMessage is true (regeneration), parentId MUST be provided by caller.
     let effectiveParentId = parentId;
-    if (effectiveParentId === undefined && !skipUserMessage && messages.length > 0) {
-      effectiveParentId = messages[messages.length - 1].id;
+    if (effectiveParentId === undefined && !skipUserMessage) {
+      // Find the last message that HAS a real UUID (not a temp ID)
+      const lastValidMessage = [...messages].reverse().find(m => m.id && !m.id.startsWith('temp_'));
+      effectiveParentId = lastValidMessage ? lastValidMessage.id : null;
     }
 
     // Create a small locally-unique request id so we can ignore stale replies
@@ -785,6 +787,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (abortController) {
       abortController.abort();
     }
-    set({ awaitingSessionId: null, activeRequestId: null, abortController: null, isStreaming: false });
+    // Also clear messages that are still temporary if they are empty
+    set((state) => ({
+      messages: state.messages.filter(m => !m.id?.startsWith('temp_ai_') || m.content.trim() !== ''),
+      awaitingSessionId: null,
+      activeRequestId: null,
+      abortController: null,
+      isStreaming: false
+    }));
   },
 }));

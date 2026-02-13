@@ -68,6 +68,14 @@ router.post("/", requireNotBlocked, async (req, res) => {
       });
     }
 
+    // Validate parentId format (must be UUID or null)
+    let validatedParentId = parentId;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (parentId && !uuidRegex.test(parentId)) {
+      logger.warn("Invalid parentId format received, ignoring", { parentId, sessionId });
+      validatedParentId = null;
+    }
+
     /* -----------------------------
        ENSURE SESSION EXISTS
     ----------------------------- */
@@ -101,10 +109,10 @@ router.post("/", requireNotBlocked, async (req, res) => {
     // We use a transaction to save the user message and optionally the title
     await withTransaction(async (client) => {
       // Save user message
-      if (skipUserMessage && parentId) {
-        userMessageId = parentId;
+      if (skipUserMessage && validatedParentId) {
+        userMessageId = validatedParentId;
       } else {
-        userMessageId = await addMessage(sessionId, "user", message, client, parentId);
+        userMessageId = await addMessage(sessionId, "user", message, client, validatedParentId);
       }
 
       // If this is the first user message, generate a short session title
@@ -135,11 +143,11 @@ router.post("/", requireNotBlocked, async (req, res) => {
     const msgMap = new Map(allMessages.map((m) => [m.id, m]));
     const history = [];
 
-    let currentId = skipUserMessage ? parentId : parentId;
+    let currentId = skipUserMessage ? validatedParentId : validatedParentId;
     if (skipUserMessage) {
-      currentId = parentId;
+      currentId = validatedParentId;
     } else {
-      currentId = parentId;
+      currentId = validatedParentId;
     }
 
     while (currentId) {

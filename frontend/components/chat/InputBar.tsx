@@ -15,6 +15,7 @@ export default function InputBar() {
     // Chat store hooks
     const sendMessage = useChatStore((s) => s.sendMessage);
     const startNewSession = useChatStore((s) => s.startNewSession);
+    const pendingSession = useChatStore((s) => s.pendingSession);
     const currentSessionId = useChatStore((s) => s.currentSessionId);
     const awaitingSessionId = useChatStore((s) => s.awaitingSessionId);
     const isStreaming = useChatStore((s) => s.isStreaming);
@@ -85,7 +86,7 @@ export default function InputBar() {
         setText("");
     }, [currentSessionId]);
 
-    const isAwaitingResponse = (!!currentSessionId && awaitingSessionId === currentSessionId) || isStreaming;
+    const isAwaitingResponse = pendingSession || (!!currentSessionId && awaitingSessionId === currentSessionId) || isStreaming;
 
     // Handle sending message
     const handleSend = async () => {
@@ -206,7 +207,7 @@ export default function InputBar() {
                                     handleSend();
                                 }
                             }}
-                            disabled={isAwaitingResponse || !!rateLimitedUntil}
+                            disabled={isAwaitingResponse || !!rateLimitedUntil || pendingSession}
                         />
 
                         {isAwaitingResponse ? (
@@ -317,7 +318,7 @@ export default function InputBar() {
                             handleSend();
                         }
                     }}
-                    disabled={isAwaitingResponse || !!rateLimitedUntil}
+                    disabled={isAwaitingResponse || !!rateLimitedUntil || pendingSession}
                 />
 
                 {isAwaitingResponse ? (

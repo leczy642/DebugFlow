@@ -15,6 +15,26 @@
 import serverless from 'serverless-http';
 import { app } from './app.js';
 
-// The handler function that AWS Lambda will invoke.
-// It maps the Lambda event to an Express request and vice-versa.
-export const handler = serverless(app);
+// Wrap the Express app with serverless-http
+const serverlessHandler = serverless(app);
+
+// Create the streaming version of the handler
+const streamingHandler = awslambda.streamifyResponse(async (event, responseStream, context) => {
+    context.callbackWaitsForEmptyEventLoop = false;
+    const result = await serverlessHandler(event, context);
+    responseStream.write(result.isBase64Encoded ? Buffer.from(result.body, 'base64') : result.body);
+    responseStream.end();
+});
+
+// Export the main entry point
+export const handler = async (event, context) => {
+    const path = event.rawPath || event.requestContext?.http?.path || "";
+    const isChat = path.includes('/api/chat');
+
+    if (isChat && typeof awslambda !== 'undefined' && awslambda.streamifyResponse) {
+        return streamingHandler(event, context);
+    } else {
+        context.callbackWaitsForEmptyEventLoop = false;
+        return serverlessHandler(event, context);
+    }
+};

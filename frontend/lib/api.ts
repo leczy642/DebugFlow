@@ -77,7 +77,18 @@ export const api = {
             throw new Error(errorData.error || response.statusText);
         }
 
-        return response.json();
+        const data = await response.json();
+
+        // DEFENSIVE: Detect and unwrap "mangled" Lambda responses (T.map error fix)
+        if (data && typeof data === 'object' && data.statusCode && data.body && typeof data.body === 'string') {
+            try {
+                return JSON.parse(data.body);
+            } catch {
+                return data;
+            }
+        }
+
+        return data;
     },
 
     get(endpoint: string, options: RequestInit = {}) {

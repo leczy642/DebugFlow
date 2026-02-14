@@ -94,6 +94,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
 
+
+
 // Handle preflight requests explicitly for all routes
 app.options('*', cors());
 

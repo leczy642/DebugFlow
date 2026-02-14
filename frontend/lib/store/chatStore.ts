@@ -499,6 +499,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         done = doneReading;
         const chunkValue = decoder.decode(value, { stream: !done });
 
+        // DEBUG: Log the raw chunk value to see what's coming from Lambda
+        console.log("[Chat Debug] Received chunk:", chunkValue);
+
         const lines = chunkValue.split("\n");
         for (const line of lines) {
           if (line.startsWith("data: ")) {
@@ -545,14 +548,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
       }
 
-      // After stream is done, we might want to refresh to get the real DB IDs
-      // But for smooth UX, maybe we wait or just let it be until next interaction.
-      // Let's do a silent refresh in background after a short delay to reconcile IDs
+      // After response is done, refresh to get the real DB data (IDs + title)
       setTimeout(() => {
         if (get().currentSessionId === currentSessionId) {
           get().selectSession(currentSessionId);
+          get().loadSessions(); // Refresh sessions list to pick up the new title
         }
       }, 1000);
+
 
       set({ activeRequestId: null, abortController: null, isStreaming: false });
 

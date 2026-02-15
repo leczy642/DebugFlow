@@ -48,6 +48,7 @@ type Message = {
   content: string;
   parentId?: string | null;
   isDeleted?: boolean;
+  wasManuallyStopped?: boolean;
 };
 
 type Session = {
@@ -108,7 +109,7 @@ type ChatStore = {
   startNewSession: (projectId?: string | null) => Promise<void>;
   selectSession: (id: string) => Promise<void>;
   selectProject: (id: string | null) => void;
-  sendMessage: (content: string, parentId?: string | null, skipUserMessage?: boolean) => Promise<void>;
+  sendMessage: (content: string, parentId?: string | null, skipUserMessage?: boolean, isContinuation?: boolean) => Promise<void>;
   editMessage: (messageId: string, newContent: string) => Promise<void>;
   regenerateResponse: (messageId: string) => Promise<void>;
   // Optional requestId used to ignore stale replies (when user started a new session)
@@ -388,7 +389,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   /* ----------------------------------------------------------------
      SEND MESSAGE TO BACKEND + HANDLE RESPONSE
   ---------------------------------------------------------------- */
-  sendMessage: async (content: string, parentId?: string | null, skipUserMessage?: boolean) => {
+  sendMessage: async (content: string, parentId?: string | null, skipUserMessage?: boolean, isContinuation?: boolean) => {
     const { currentSessionId, messages } = get();
     if (!currentSessionId) return;
 
@@ -409,7 +410,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     set((state) => {
       let newSessions = state.sessions;
-      if (!skipUserMessage) {
+      if (!skipUserMessage && !isContinuation) {
         const userMessage: Message = {
           id: tempUserMessageId,
           role: "user",
@@ -452,6 +453,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           message: content,
           parentId: effectiveParentId,
           skipUserMessage,
+          isContinuation,
         }),
         signal: controller.signal,
       });
@@ -475,10 +477,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       let assistantMessageId = "";
       let accumulatedContent = "";
 
-      // Create a placeholder message for the assistant
+      // Create a placeholder message for the assistant (if not continuation)
       set((state) => {
         // Only add if we are the active request
         if (state.activeRequestId !== requestId) return {};
+
+        if (isContinuation) {
+          // Find the specific assistant message to append to (using parentId if provided, which should be the AI msg ID)
+          const targetMessage = parentId
+            ? state.messages.find(m => m.id === parentId)
+            : [...state.messages].reverse().find(m => m.role === 'assistant');
+
+          if (targetMessage && targetMessage.role === 'assistant') {
+            assistantMessageId = targetMessage.id || "";
+            accumulatedContent = targetMessage.content;
+            return {
+              awaitingSessionId: null
+            };
+          }
+        }
 
         // Generate a temporary ID for the assistant message so we can update it
         assistantMessageId = `temp_ai_${Date.now()}`;
@@ -806,12 +823,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       abortController.abort();
     }
     // Also clear messages that are still temporary if they are empty
-    set((state) => ({
-      messages: state.messages.filter(m => !m.id?.startsWith('temp_ai_') || m.content.trim() !== ''),
-      awaitingSessionId: null,
-      activeRequestId: null,
-      abortController: null,
-      isStreaming: false
-    }));
+    set((state) => {
+      const updatedMessages = state.messages.map((m, idx) => {
+        if (idx === state.messages.length - 1 && m.role === 'assistant') {
+          return { ...m, wasManuallyStopped: true };
+        }
+        return m;
+      });
+
+      return {
+        messages: updatedMessages.filter(m => !m.id?.startsWith('temp_ai_') || m.content.trim() !== ''),
+        awaitingSessionId: null,
+        activeRequestId: null,
+        abortController: null,
+        isStreaming: false
+      };
+    });
   },
 }));

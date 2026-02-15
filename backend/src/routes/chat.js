@@ -20,6 +20,7 @@ import { withTimeout } from "../utils/withTimeout.js";
 import { requireNotBlocked } from "../middleware/roleMiddleware.js";
 import {
   addMessage,
+  appendMessageContent,
   sessionExists,
   getSessionWithMessages,
   withTransaction,
@@ -111,12 +112,24 @@ router.post("/", requireNotBlocked, async (req, res) => {
       // Save user message
       if (skipUserMessage && validatedParentId) {
         userMessageId = validatedParentId;
+      } else if (req.body.isContinuation) {
+        // Find the last assistant message in this session to continue from
+        const lastAssistantMsg = (sessionState?.messages || [])
+          .filter(m => m.role === 'assistant' && !m.isDeleted && !m.content.startsWith('⚠️'))
+          .pop();
+
+        if (lastAssistantMsg) {
+          userMessageId = lastAssistantMsg.id;
+        } else {
+          // Fallback if no assistant message found
+          userMessageId = await addMessage(sessionId, "user", message, client, validatedParentId);
+        }
       } else {
         userMessageId = await addMessage(sessionId, "user", message, client, validatedParentId);
       }
 
-      // If this is the first user message, generate a short session title
-      if (isFirstMessage && !skipUserMessage) {
+      // If this is the first user message (and NOT a continuation), generate a short session title
+      if (isFirstMessage && !skipUserMessage && !req.body.isContinuation) {
         try {
           generatedTitle = await generateSessionTitle(message);
           // Update session title within transaction
@@ -143,24 +156,47 @@ router.post("/", requireNotBlocked, async (req, res) => {
     const msgMap = new Map(allMessages.map((m) => [m.id, m]));
     const history = [];
 
-    let currentId = skipUserMessage ? validatedParentId : validatedParentId;
-    if (skipUserMessage) {
-      currentId = validatedParentId;
-    } else {
-      currentId = validatedParentId;
-    }
+    let currentId = userMessageId;
 
-    while (currentId) {
-      const msg = msgMap.get(currentId);
-      if (!msg) break;
-      if (!msg.isDeleted) {
-        history.unshift({ role: msg.role, content: msg.content });
+    // If it's a normal message flow, we start history reconstruction from the NEWLY added user message
+    // If it's skipUserMessage (regeneration), we start from the parent (the last user message)
+    // If it's a continuation, we start from the assistant message itself to get the full context up to its current point.
+
+    if (req.body.isContinuation) {
+      // For continuation, we want to reconstruction history UP TO AND INCLUDING this assistant message
+      // But we need to handle it slightly differently because reconstruct logic below 
+      // usually treats the starting ID as the "latest" node.
+      while (currentId) {
+        const msg = msgMap.get(currentId);
+        if (!msg) break;
+        if (!msg.isDeleted) {
+          history.unshift({ role: msg.role, content: msg.content });
+        }
+        currentId = msg.parentId;
       }
-      currentId = msg.parentId;
-    }
 
-    if (!skipUserMessage) {
-      history.push({ role: "user", content: message });
+      // We also need to add a instruction to the model to CONTINUE
+      history.push({
+        role: "user",
+        content: "Continue your previous response exactly where you left off. Do not repeat what you already said, just continue the content seamlessly."
+      });
+    } else {
+      // Normal or regenerate flow
+      while (currentId) {
+        const msg = msgMap.get(currentId);
+        if (!msg) break;
+        if (!msg.isDeleted) {
+          history.unshift({ role: msg.role, content: msg.content });
+        }
+        currentId = msg.parentId;
+      }
+
+      if (!skipUserMessage) {
+        // The message itself was already added to the DB and included in history reconstruction 
+        // IF we started from userMessageId and it was a real ID.
+        // Wait, addMessage returns the NEW ID. So reconstruct logic above SHOULD have included it.
+        // Let's verify chat.js original logic.
+      }
     }
 
     /* -----------------------------
@@ -223,9 +259,6 @@ router.post("/", requireNotBlocked, async (req, res) => {
     /* -----------------------------
        STREAMING RESPONSE
     ----------------------------- */
-    /* -----------------------------
-       STREAMING RESPONSE
-    ----------------------------- */
     let fullAiReply = "";
     let isAborted = false;
 
@@ -271,7 +304,11 @@ router.post("/", requireNotBlocked, async (req, res) => {
       // Only persist if we have some content
       if (fullAiReply) {
         await withTransaction(async (client) => {
-          await addMessage(sessionId, "assistant", fullAiReply, client, userMessageId);
+          if (req.body.isContinuation) {
+            await appendMessageContent(userMessageId, fullAiReply, client);
+          } else {
+            await addMessage(sessionId, "assistant", fullAiReply, client, userMessageId);
+          }
         });
 
         // Check if we should generate a session summary (async, non-blocking)

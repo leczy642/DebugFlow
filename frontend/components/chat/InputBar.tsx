@@ -102,6 +102,23 @@ export default function InputBar() {
         }
 
         setText("");
+
+        // Intercept "continue" command
+        if (text.trim().toLowerCase() === "continue") {
+            const messages = useChatStore.getState().messages;
+            const lastMessage = messages[messages.length - 1];
+
+            if (lastMessage?.role === "assistant" && !lastMessage.content.startsWith("⚠️")) {
+                await sendMessage("continue", lastMessage.id, true, true);
+                return;
+            } else if (lastMessage?.role === "user") {
+                // If the last message is a user message (e.g. AI was stopped before it started),
+                // "continue" should just trigger the AI to respond to that user message.
+                await sendMessage(lastMessage.content, lastMessage.id, true, false);
+                return;
+            }
+        }
+
         await sendMessage(text);
     };
 

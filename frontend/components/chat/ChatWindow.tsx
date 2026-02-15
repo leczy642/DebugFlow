@@ -209,6 +209,7 @@ export default function ChatWindow() {
                   }
                 }}
                 onRegenerate={item.message.id ? () => regenerateResponse(item.message.id!) : undefined}
+                onContinue={index === thread.length - 1 && item.message.role === 'assistant' ? () => useChatStore.getState().sendMessage("continue", item.message.id, true, true) : undefined}
                 onDelete={item.message.id ? () => deleteMessage(item.message.id!) : undefined}
                 onEdit={item.message.id ? (newContent) => useChatStore.getState().editMessage(item.message.id!, newContent) : undefined}
                 onRestore={item.message.id ? () => useChatStore.getState().restoreMessage(item.message.id!) : undefined}

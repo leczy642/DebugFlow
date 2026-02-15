@@ -46,7 +46,7 @@
  * -----------------------------------------------------------------------------
  */
 
-import { ClipboardDocumentIcon, TrashIcon, ArrowPathIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, ArrowUturnLeftIcon } from "@heroicons/react/24/outline";
+import { ClipboardDocumentIcon, TrashIcon, ArrowPathIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, ArrowUturnLeftIcon, PlayIcon } from "@heroicons/react/24/outline";
 import { useState, useEffect, useRef } from "react";
 import DeleteConfirmationModal from "./DeleteConfirmationModal";
 import StreamingMarkdown from "./StreamingMarkdown";
@@ -57,6 +57,7 @@ type Message = {
   content: string;
   parentId?: string | null;
   isDeleted?: boolean;
+  wasManuallyStopped?: boolean;
 };
 
 type Props = {
@@ -68,6 +69,7 @@ type Props = {
   onDelete?: () => void;
   onEdit?: (newContent: string) => void;
   onRestore?: () => void;
+  onContinue?: () => void;
   id?: string;
   isStreaming?: boolean;
 };
@@ -81,6 +83,7 @@ export default function MessageBubble({
   onDelete,
   onEdit,
   onRestore,
+  onContinue,
   id,
   isStreaming = false
 }: Props) {
@@ -262,6 +265,14 @@ export default function MessageBubble({
                   {onRegenerate && !isUser && (
                     <button onClick={onRegenerate} title="Regenerate" className="p-1 hover:bg-gray-200 rounded text-gray-500">
                       <ArrowPathIcon className="h-4 w-4" />
+                    </button>
+                  )}
+
+                  {/* Continue button for manually stopped messages */}
+                  {onContinue && !isUser && message.wasManuallyStopped && (
+                    <button onClick={onContinue} title="Continue Generation" className="p-1 hover:bg-blue-100 rounded text-blue-600 flex items-center gap-1 px-2 border border-blue-200 ml-1">
+                      <PlayIcon className="h-4 w-4" />
+                      <span className="text-[10px] font-bold uppercase">Continue</span>
                     </button>
                   )}
                 </div>

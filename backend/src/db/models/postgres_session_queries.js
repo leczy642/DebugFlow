@@ -226,6 +226,27 @@ export async function addMessage(
   return id;
 }
 
+export async function appendMessageContent(
+  messageId,
+  contentToAppend,
+  client = pool
+) {
+  await client.query(
+    `UPDATE messages
+     SET content = content || $2
+     WHERE id = $1`,
+    [messageId, contentToAppend]
+  );
+
+  // Update session updated_at
+  await client.query(
+    `UPDATE sessions
+     SET updated_at = NOW()
+     WHERE id = (SELECT session_id FROM messages WHERE id = $1)`,
+    [messageId]
+  );
+}
+
 export async function deleteMessageById(messageId, userId = null) {
   // Soft delete: set is_deleted = true, deleted_at = NOW(), deleted_by = userId
   const { rowCount } = await pool.query(

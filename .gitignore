@@ -31,3 +31,10 @@ logs/
 
 # Ignore service account keys
 secret/
+
+# Ignore a specific files
+backend/deploy.zip  
+backend/DEPLOYMENT.md
+backend/DEPLOYMENT_STREAMING.md
+backend/DEPLOYMENT_API_GATEWAY.md
+backend/RDS_SETUP.md

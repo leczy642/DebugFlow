@@ -156,16 +156,16 @@ router.post("/", requireNotBlocked, async (req, res) => {
     const msgMap = new Map(allMessages.map((m) => [m.id, m]));
     const history = [];
 
-    let currentId = userMessageId;
+    // Reconstruct history starting from the parent of the current turn
+    // This turn will be added manually below to ensure it's included even if not in msgMap yet
+    let currentId = validatedParentId;
 
-    // If it's a normal message flow, we start history reconstruction from the NEWLY added user message
-    // If it's skipUserMessage (regeneration), we start from the parent (the last user message)
-    // If it's a continuation, we start from the assistant message itself to get the full context up to its current point.
-
+    // BUT if it's a continuation, validatedParentId is the parent of the assistant message.
+    // We actually want to reconstruct history INCLUDING the assistant message it self.
     if (req.body.isContinuation) {
-      // For continuation, we want to reconstruction history UP TO AND INCLUDING this assistant message
-      // But we need to handle it slightly differently because reconstruct logic below 
-      // usually treats the starting ID as the "latest" node.
+      // Find the last assistant message ID we matched earlier
+      currentId = userMessageId; // In continuation mode, this is the AI message ID
+
       while (currentId) {
         const msg = msgMap.get(currentId);
         if (!msg) break;
@@ -175,13 +175,13 @@ router.post("/", requireNotBlocked, async (req, res) => {
         currentId = msg.parentId;
       }
 
-      // We also need to add a instruction to the model to CONTINUE
+      // Add continuation prompt
       history.push({
         role: "user",
         content: "Continue your previous response exactly where you left off. Do not repeat what you already said, just continue the content seamlessly."
       });
     } else {
-      // Normal or regenerate flow
+      // Normal or regeneration flow
       while (currentId) {
         const msg = msgMap.get(currentId);
         if (!msg) break;
@@ -191,11 +191,9 @@ router.post("/", requireNotBlocked, async (req, res) => {
         currentId = msg.parentId;
       }
 
+      // Explicitly push the current message
       if (!skipUserMessage) {
-        // The message itself was already added to the DB and included in history reconstruction 
-        // IF we started from userMessageId and it was a real ID.
-        // Wait, addMessage returns the NEW ID. So reconstruct logic above SHOULD have included it.
-        // Let's verify chat.js original logic.
+        history.push({ role: "user", content: message });
       }
     }
 

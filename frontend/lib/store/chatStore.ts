@@ -492,7 +492,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             assistantMessageId = targetMessage.id || "";
             accumulatedContent = targetMessage.content;
             return {
-              awaitingSessionId: null
+              awaitingSessionId: null,
+              messages: state.messages.map(m =>
+                m.id === assistantMessageId ? { ...m, wasManuallyStopped: false } : m
+              )
             };
           }
         }

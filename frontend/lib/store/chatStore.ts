@@ -182,16 +182,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   ---------------------------------------------------------------- */
   loadSessions: async () => {
     await get().checkUsage();
-    const sessions = await api.get("/api/sessions");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sessionsData: any[] = await api.get("/api/sessions");
 
-    set({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      sessions: sessions.map((s: any) => ({
-        ...s,
-        messages: [],
-        pinned: typeof s.pinned === "boolean" ? s.pinned : false,
-      })),
-    });
+    set((state) => ({
+      sessions: sessionsData.map((s) => {
+        // Find if we already have this session and preserve its message cache if any
+        const existing = state.sessions.find((prev) => prev.id === s.id);
+        return {
+          ...s,
+          messages: existing?.messages || [],
+          pinned: typeof s.pinned === "boolean" ? s.pinned : false,
+        };
+      }),
+    }));
   },
 
   loadProjects: async () => {
@@ -334,6 +338,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     // Show cached messages immediately if we already loaded this session once
     const cached = get().sessions.find((s) => s.id === id)?.messages;
+    const isAlreadyActive = get().currentSessionId === id;
 
     set({
       currentSessionId: id,
@@ -342,7 +347,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       loadingSessionId: id,
       sessionLoadRequestId: requestId,
       sessionLoadAbortController: controller,
-      messages: Array.isArray(cached) && cached.length ? cached : [],
+      // Only reset messages to [] if we aren't already on this session and have no cache
+      messages: cached && cached.length ? cached : (isAlreadyActive ? get().messages : []),
     });
 
     try {
@@ -549,13 +555,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
 
       // After response is done, refresh to get the real DB data (IDs + title)
-      setTimeout(() => {
-        if (get().currentSessionId === currentSessionId) {
-          get().selectSession(currentSessionId);
-          get().loadSessions(); // Refresh sessions list to pick up the new title
-        }
-      }, 1000);
+      if (get().currentSessionId === currentSessionId) {
+        // Update the cache for THIS session so subsequent reloads don't wipe it
+        const finalMessages = get().messages;
+        set((s) => ({
+          sessions: s.sessions.map((sess) =>
+            sess.id === currentSessionId ? { ...sess, messages: finalMessages } : sess
+          )
+        }));
 
+        // Refresh metadata (title, etc) after a short delay
+        setTimeout(() => {
+          if (get().currentSessionId === currentSessionId) {
+            get().loadSessions();
+          }
+        }, 1000);
+      }
 
       set({ activeRequestId: null, abortController: null, isStreaming: false });
 

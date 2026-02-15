@@ -246,8 +246,14 @@ router.post("/", requireNotBlocked, async (req, res) => {
         );
         // Prepend context to history
         if (contextMessages.length > 0) {
+          logger.info(`[Context Debug] Injecting ${contextMessages.length} context messages`, {
+            types: contextMessages.map(m => m.role === 'system' ? 'system (context)' : m.role),
+            firstLength: contextMessages[0]?.content?.length
+          });
           history.unshift(...contextMessages);
           logger.info(`Injected ${contextMessages.length} context messages for session ${sessionId}`);
+        } else {
+          logger.info(`[Context Debug] No context messages generated for session ${sessionId}`);
         }
       } catch (err) {
         logger.warn("Failed to build context", { error: err instanceof Error ? err.message : err });
@@ -257,6 +263,11 @@ router.post("/", requireNotBlocked, async (req, res) => {
     /* -----------------------------
        STREAMING RESPONSE
     ----------------------------- */
+    logger.info(`[Chat Debug] Final History sent to LLM: ${history.length} messages`, {
+      lastMessage: history[history.length - 1]?.content?.slice(0, 50),
+      firstMessage: history[0]?.content?.slice(0, 50),
+      parentIdUsed: currentId
+    });
     let fullAiReply = "";
     let isAborted = false;
 

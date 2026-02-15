@@ -64,15 +64,15 @@ export default function ChatWindow() {
     loadingSessionId,
     regenerateResponse,
     deleteMessage,
-    isStreaming
+    isStreaming,
+    activeVersions,
+    setActiveVersion
   } = useChatStore();
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
 
-  // State to track which version is selected for each parent node
-  const [activeVersions, setActiveVersions] = useState<Record<string, string>>({});
   const [activeLinkId, setActiveLinkId] = useState<string | null>(null);
 
   const handleLinkClick = (id: string) => {
@@ -139,10 +139,7 @@ export default function ChatWindow() {
   }, [messages, activeVersions]);
 
   const handleSelectVersion = (parentIdKey: string, messageId: string) => {
-    setActiveVersions(prev => ({
-      ...prev,
-      [parentIdKey]: messageId
-    }));
+    setActiveVersion(parentIdKey, messageId);
   };
 
   // Auto-scroll logic for Virtuoso

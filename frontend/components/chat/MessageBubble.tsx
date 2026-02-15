@@ -201,6 +201,23 @@ export default function MessageBubble({
     }
 
     // Assistant messages: markdown with syntax highlighting via StreamingMarkdown
+    if (!message.content && !isStreaming) {
+      return (
+        <div className="rounded-lg relative text-gray-500 px-4 py-3 text-left w-full italic bg-gray-50 border border-dashed border-gray-300 flex flex-col items-start gap-2">
+          <span>No response generated.</span>
+          {onRegenerate && (
+            <button
+              onClick={onRegenerate}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 shadow-sm hover:bg-gray-50 rounded-md text-xs font-medium not-italic text-gray-700 transition-colors"
+            >
+              <ArrowPathIcon className="h-3.5 w-3.5" />
+              Click to regenerate
+            </button>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div className="rounded-lg relative text-gray-900 px-1 py-1 text-left w-full overflow-hidden">
         <StreamingMarkdown content={message.content} isStreaming={isStreaming} />

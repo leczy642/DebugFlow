@@ -87,6 +87,10 @@ type ChatStore = {
   // responses are ignored.
   activeRequestId: string | null;
 
+  // Threading
+  activeVersions: Record<string, string>;
+  setActiveVersion: (parentId: string, messageId: string) => void;
+
   // Session switching (message load) control to avoid stale updates + speed up switching
   loadingSessionId: string | null;
   sessionLoadRequestId: string | null;
@@ -114,6 +118,7 @@ type ChatStore = {
   regenerateResponse: (messageId: string) => Promise<void>;
   // Optional requestId used to ignore stale replies (when user started a new session)
   receiveMessage: (content: string, requestId?: string, parentId?: string) => void;
+  getLastActiveMessage: () => Message | null;
 
   renameSession: (id: string, newTitle: string) => void;
   pinSession: (id: string) => void;
@@ -177,6 +182,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   loadingSessionId: null,
   sessionLoadRequestId: null,
   sessionLoadAbortController: null,
+  activeVersions: {},
 
   /* ----------------------------------------------------------------
      LOAD EXISTING SESSIONS FROM SERVER
@@ -393,14 +399,58 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const { currentSessionId, messages } = get();
     if (!currentSessionId) return;
 
-    // If no parentId is provided (normal chat flow), use the last message's ID as parent
-    // This ensures linear conversation history.
+    // If no parentId is provided (normal chat flow), use the leaf of the CURRENT ACTIVE BRANCH
+    // This ensures linear conversation history based on what the user is seeing.
     // If skipUserMessage is true (regeneration), parentId MUST be provided by caller.
     let effectiveParentId = parentId;
     if (effectiveParentId === undefined && !skipUserMessage) {
-      // Find the last message that HAS a real UUID (not a temp ID)
-      const lastValidMessage = [...messages].reverse().find(m => m.id && !m.id.startsWith('temp_'));
-      effectiveParentId = lastValidMessage ? lastValidMessage.id : null;
+      // Traverse the thread using activeVersions to find the leaf
+      const { messages, activeVersions } = get();
+      if (messages.length > 0) {
+        const childrenMap = new Map<string, Message[]>();
+        const roots: Message[] = [];
+
+        messages.forEach(m => {
+          if (m.parentId) {
+            if (!childrenMap.has(m.parentId)) childrenMap.set(m.parentId, []);
+            childrenMap.get(m.parentId)!.push(m);
+          } else {
+            roots.push(m);
+          }
+        });
+
+        let currentSiblings = roots;
+        let parentIdKey = 'root';
+        let lastMsg: Message | null = null;
+
+        while (currentSiblings.length > 0) {
+          const activeId = activeVersions[parentIdKey];
+          let activeIndex = -1;
+
+          if (activeId) {
+            activeIndex = currentSiblings.findIndex(m => m.id === activeId);
+          }
+
+          // Default to latest if no active selection
+          if (activeIndex === -1) {
+            activeIndex = currentSiblings.length - 1;
+          }
+
+          const activeMessage = currentSiblings[activeIndex];
+          lastMsg = activeMessage;
+
+          if (activeMessage.id && childrenMap.has(activeMessage.id)) {
+            currentSiblings = childrenMap.get(activeMessage.id)!;
+            parentIdKey = activeMessage.id;
+          } else {
+            currentSiblings = [];
+          }
+        }
+
+        if (lastMsg && lastMsg.id && !lastMsg.id.startsWith('temp_')) {
+          effectiveParentId = lastMsg.id;
+        }
+      }
     }
 
     // Create a small locally-unique request id so we can ignore stale replies
@@ -445,6 +495,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     try {
       const authHeaders = await getAuthHeaders();
+
+      // DEBUG: Log the payload being sent
+      console.log("[Chat Debug] Sending to Backend:", {
+        sessionId: currentSessionId,
+        message: content,
+        parentId: effectiveParentId,
+        skipUserMessage,
+        isContinuation,
+        activeVersionsSnapshot: get().activeVersions
+      });
+
       const res = await fetch(`${BASE_URL}/api/chat`, {
         method: "POST",
         headers: authHeaders,
@@ -576,20 +637,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       // After response is done, refresh to get the real DB data (IDs + title)
       if (get().currentSessionId === currentSessionId) {
-        // Update the cache for THIS session so subsequent reloads don't wipe it
-        const finalMessages = get().messages;
-        set((s) => ({
-          sessions: s.sessions.map((sess) =>
-            sess.id === currentSessionId ? { ...sess, messages: finalMessages } : sess
-          )
-        }));
+        // Refresh metadata (title, etc)
+        get().loadSessions();
 
-        // Refresh metadata (title, etc) after a short delay
-        setTimeout(() => {
-          if (get().currentSessionId === currentSessionId) {
-            get().loadSessions();
-          }
-        }, 1000);
+        // CRITICAL: Fetch the REAL messages from DB to get the UUIDs 
+        // replacing the temp_ai_ IDs. If we don't do this, the next user message
+        // will have parentId=undefined because we filter out temp IDs.
+        try {
+          const freshMessages: any = await api.get(`/api/sessions/${currentSessionId}/messages`);
+          set((s) => ({
+            messages: freshMessages,
+            sessions: s.sessions.map((sess) =>
+              sess.id === currentSessionId ? { ...sess, messages: freshMessages } : sess
+            )
+          }));
+        } catch (err) {
+          console.error("Failed to refresh messages after stream", err);
+        }
       }
 
       set({ activeRequestId: null, abortController: null, isStreaming: false });
@@ -619,6 +683,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       const parentMessage = messages.find((m) => m.id === parentId);
       if (!parentMessage) return;
+
+      // New requirement: If the message to regenerate is empty or manually stopped (e.g. error/empty state),
+      // remove it so the new generation replaces it visually.
+      if (!messageToRegenerate.content || messageToRegenerate.wasManuallyStopped) {
+        set((state) => ({
+          messages: state.messages.map(m => m.id === messageId ? { ...m, isDeleted: true } : m).filter(m => m.id !== messageId) // Hard remove from memory for "disappear" effect
+        }));
+        try {
+          if (messageId && !messageId.startsWith('temp_')) {
+            await api.delete(`/api/messages/${messageId}`);
+          }
+        } catch (e) { console.error("Failed to delete empty message", e); }
+      }
 
       // Resend the parent message content, linked to the SAME parent ID as the user message?
       // No, we want to send a NEW request that is a child of the USER message.
@@ -817,6 +894,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       loadingSessionId: null,
       sessionLoadRequestId: null,
       sessionLoadAbortController: null,
+      activeVersions: {},
     });
   },
 
@@ -835,12 +913,68 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       });
 
       return {
-        messages: updatedMessages.filter(m => !m.id?.startsWith('temp_ai_') || m.content.trim() !== ''),
+        // Keep empty messages if they were manually stopped so user can regenerate
+        messages: updatedMessages.filter(m => (!m.id?.startsWith('temp_ai_') || m.content.trim() !== '') || m.wasManuallyStopped),
         awaitingSessionId: null,
         activeRequestId: null,
         abortController: null,
         isStreaming: false
       };
     });
+  },
+
+  setActiveVersion: (parentId: string, messageId: string) => {
+    set((state) => ({
+      activeVersions: {
+        ...state.activeVersions,
+        [parentId]: messageId
+      }
+    }));
+  },
+
+
+  getLastActiveMessage: () => {
+    const { messages, activeVersions } = get();
+    if (!messages.length) return null;
+
+    const childrenMap = new Map<string, Message[]>();
+    const roots: Message[] = [];
+
+    messages.forEach(m => {
+      if (m.parentId) {
+        if (!childrenMap.has(m.parentId)) childrenMap.set(m.parentId, []);
+        childrenMap.get(m.parentId)!.push(m);
+      } else {
+        roots.push(m);
+      }
+    });
+
+    let currentSiblings = roots;
+    let parentIdKey = 'root';
+    let lastMsg: Message | null = null;
+
+    while (currentSiblings.length > 0) {
+      const activeId = activeVersions[parentIdKey];
+      let activeIndex = -1;
+
+      if (activeId) {
+        activeIndex = currentSiblings.findIndex(m => m.id === activeId);
+      }
+
+      if (activeIndex === -1) {
+        activeIndex = currentSiblings.length - 1;
+      }
+
+      const activeMessage = currentSiblings[activeIndex];
+      lastMsg = activeMessage;
+
+      if (activeMessage.id && childrenMap.has(activeMessage.id)) {
+        currentSiblings = childrenMap.get(activeMessage.id)!;
+        parentIdKey = activeMessage.id;
+      } else {
+        currentSiblings = [];
+      }
+    }
+    return lastMsg;
   },
 }));

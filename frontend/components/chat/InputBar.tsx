@@ -105,8 +105,7 @@ export default function InputBar() {
 
         // Intercept "continue" command
         if (text.trim().toLowerCase() === "continue") {
-            const messages = useChatStore.getState().messages;
-            const lastMessage = messages[messages.length - 1];
+            const lastMessage = useChatStore.getState().getLastActiveMessage();
 
             if (lastMessage?.role === "assistant" && !lastMessage.content.startsWith("⚠️")) {
                 await sendMessage("continue", lastMessage.id, true, true);

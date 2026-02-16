@@ -903,6 +903,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (abortController) {
       abortController.abort();
     }
+
     // Also clear messages that are still temporary if they are empty
     set((state) => {
       const updatedMessages = state.messages.map((m, idx) => {

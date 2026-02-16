@@ -53,67 +53,62 @@ const router = express.Router();
  * POST /
  * Main ingestion endpoint - processes error logs and stores embeddings
  */
-router.post('/', async(req, res) => {
-  try{
+router.post('/', async (req, res) => {
+  try {
     // Destructure request body (currently empty, reserved for future params)
-      const {} = req.body
+    const { } = req.body
 
-      // ========== Step 1: Load Documents ==========
-      // Construct path to sample logs file
-      //load documents from file ✅
-      const INPUT_FILE = path.join(__dirname, '..','..', 'data', 'sample_logs.json');
-      const loadedFileDocument = loadDocumentsFromFile(INPUT_FILE)
+    // ========== Immediate Response ==========
+    // Return 202 Accepted to the client so they don't have to wait
+    res.status(202).json({
+      success: true,
+      message: 'Log ingestion started in background. Check server logs for completion status.'
+    });
 
-      // ========== Step 2: Generate Embeddings ==========
-      // Convert error logs to vector embeddings using HuggingFace
-      //embed documents ✅
-      const {vectors, failed} = await embedDocuments(loadedFileDocument);
+    // ========== Background Process ==========
+    // Run the ingestion logic without awaiting it in the response path
+    (async () => {
+      try {
+        // ========== Step 1: Load Documents ==========
+        // Construct path to sample logs file
+        const INPUT_FILE = path.join(__dirname, '..', '..', 'data', 'sample_logs.json');
+        const loadedFileDocument = loadDocumentsFromFile(INPUT_FILE)
 
-      // ========== Step 3: Validate Embeddings ==========
-      // Return error if no valid embeddings were generated
-      //generate an error if no embeddings are found
-      if(vectors.length === 0){
-        res.status(400).json({
-          success: false,
-          error: 'No embeddings generated',
-          failedCount: failed.length,
-          failure: failed
-        })
+        // ========== Step 2: Generate Embeddings ==========
+        // Convert error logs to vector embeddings using HuggingFace
+        const { vectors, failed } = await embedDocuments(loadedFileDocument);
+
+        // ========== Step 3: Validate Embeddings ==========
+        if (vectors.length === 0) {
+          logger.error(`Background Ingestion Failed: No embeddings generated. Failed count: ${failed.length}`);
+          return;
+        }
+
+        // ========== Step 4: Get Pinecone Index Handle ==========
+        const index = pinecone.index(PINECONE_INDEX);
+
+        // ========== Step 5: Upsert Vectors to Pinecone ==========
+        await upsertVectors(index, vectors)
+
+        logger.info(`Background Ingestion Completed: ${vectors.length} vectors upserted.`);
+
+      } catch (bgError) {
+        logger.error(`Background Ingestion Error: ${bgError.message}`);
+        // In a real production app, you might want to write this to a 'failed_jobs' table
       }
-      
-      // ========== Step 4: Get Pinecone Index Handle ==========
-      // Connect to the specified Pinecone index
-      //get the pinecone index 
-      const index = pinecone.index(PINECONE_INDEX);
+    })();
 
-      
-      // ========== Step 5: Upsert Vectors to Pinecone ==========
-     // Batch upload embeddings to vector database
-    //upsert to pinecone
-      await upsertVectors(index, vectors)
-
-      // ========== Step 6: Return Success Response ==========
-      res.json({
-        success: true,
-          totalDocuments: loadedFileDocument.length,
-          successfulEmbeddings: vectors.length,
-          failedEmbeddings: failed.length,
-          upsertedVectors: vectors.length,
-          message: 'Embeddings generated and upserted successfully',
-          failures: failed.length > 0 ? failed : undefined
-      });
-      // ========== Error Handling ==========
-    // Log the error for debugging
-    }catch(error){
-      logger.error(`Error in ingest route: ${error.message}`);
-      // Return error response with stack trace in development mode
+  } catch (error) {
+    logger.error(`Error in ingest route: ${error.message}`);
+    // This catch block mainly catches synchronous errors before the background process starts
+    if (!res.headersSent) {
       res.status(500).json({
         success: false,
         error: error.message,
         stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
     }
-
+  }
 });
 // ========== Export Router ==========
 export default router;

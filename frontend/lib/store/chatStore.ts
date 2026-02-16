@@ -537,6 +537,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       let done = false;
       let assistantMessageId = "";
       let accumulatedContent = "";
+      let confirmedMessageId: string | null = null;
 
       // Create a placeholder message for the assistant (if not continuation)
       set((state) => {
@@ -612,6 +613,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 });
               }
 
+              if (data.messageId) {
+                confirmedMessageId = data.messageId;
+              }
+
               if (data.content) {
                 accumulatedContent += data.content;
 
@@ -644,7 +649,30 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         // replacing the temp_ai_ IDs. If we don't do this, the next user message
         // will have parentId=undefined because we filter out temp IDs.
         try {
-          const freshMessages: any = await api.get(`/api/sessions/${currentSessionId}/messages`);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const freshMessages: any[] = await api.get(`/api/sessions/${currentSessionId}/messages`);
+
+          // CLIENT-SIDE PATCH FOR REPLICATION LAG
+          // If we have a confirmedMessageId but it's not in the fresh list yet,
+          // manually append our local version (with the correct ID) to prevent vanishing.
+          if (confirmedMessageId && !freshMessages.find(m => m.id === confirmedMessageId)) {
+            console.warn("[Chat] Replication lag detected, preserving message locally", confirmedMessageId);
+
+            // Find our local temp message which has the content we just streamed
+            const currentStoreMessages = get().messages;
+            const tempMessage = currentStoreMessages.find(m => m.id === assistantMessageId);
+
+            if (tempMessage) {
+              // Create a finalized message object using the confirmed ID
+              const preservedMessage = {
+                ...tempMessage,
+                id: confirmedMessageId,
+                // Ensure we don't keep temp ID
+              };
+              freshMessages.push(preservedMessage);
+            }
+          }
+
           set((s) => ({
             messages: freshMessages,
             sessions: s.sessions.map((sess) =>

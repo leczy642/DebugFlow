@@ -25,12 +25,15 @@ if (process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("localhost"))
   };
 }
 
+
+const isServerless = process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.VERCEL;
+
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: sslConfig,
   connectionTimeoutMillis: 5000, // Terminate connection attempt after 5 seconds
   idleTimeoutMillis: 30000,      // Close idle clients after 30 seconds
-  max: 10                        // Maximum number of clients in the pool
+  max: isServerless ? 1 : 10     // Use 1 connection for serverless, 10 for long-running servers
 });
 
 pool.on("connect", () => {

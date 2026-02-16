@@ -582,6 +582,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         };
       });
 
+      let buffer = "";
+
       while (!done) {
         const { value, done: doneReading } = await reader.read();
         done = doneReading;
@@ -590,7 +592,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         // DEBUG: Log the raw chunk value to see what's coming from Lambda
         console.log("[Chat Debug] Received chunk:", chunkValue);
 
-        const lines = chunkValue.split("\n");
+        buffer += chunkValue;
+        const lines = buffer.split("\n");
+
+        // The last line might be incomplete, so we keep it in the buffer
+        // and process it in the next iteration.
+        // Unless we are done, in which case we process everything.
+        buffer = lines.pop() || "";
+
         for (const line of lines) {
           if (line.startsWith("data: ")) {
             const dataStr = line.slice(6);

@@ -261,13 +261,32 @@ router.post("/", requireNotBlocked, async (req, res) => {
     }
 
     /* -----------------------------
+       PREPARE ASSISTANT MESSAGE RECORD
+       We create an empty assistant message early to get its UUID.
+       This UUID is streamed immediately to the frontend so it can 
+       link local state even if the stream is cut off later.
+    ----------------------------- */
+    let assistantMessageId;
+    if (req.body.isContinuation) {
+      // In continuation, we already have the message ID (it's userMessageId from logic above)
+      assistantMessageId = userMessageId;
+    } else {
+      // Create a NEW empty assistant message
+      assistantMessageId = await addMessage(sessionId, "assistant", "", pool, userMessageId);
+    }
+
+    // STREAM THE ID IMMEDIATELY
+    res.write(`data: ${JSON.stringify({ messageId: assistantMessageId })}\n\n`);
+
+    /* -----------------------------
        STREAMING RESPONSE
     ----------------------------- */
     logger.info(`[Chat Debug] Final History sent to LLM: ${history.length} messages`, {
       lastMessage: history[history.length - 1]?.content?.slice(0, 50),
-      firstMessage: history[0]?.content?.slice(0, 50),
-      parentIdUsed: currentId
+      parentIdUsed: currentId,
+      assistantMessageId
     });
+
     let fullAiReply = "";
     let isAborted = false;
 
@@ -281,7 +300,6 @@ router.post("/", requireNotBlocked, async (req, res) => {
 
     req.on("close", onDisconnect);
     req.on("aborted", onDisconnect);
-    // Sometimes the response close event fires instead/first
     res.on("close", onDisconnect);
 
     try {
@@ -300,56 +318,39 @@ router.post("/", requireNotBlocked, async (req, res) => {
         }
       }
 
-      // Persist the AI response (full or partial)
-      // Only persist if we have some content
-      if (fullAiReply) {
-        let savedMessageId = userMessageId; // Default to user message for continuation (though it should be the appended one's ID? No, continuation appends to existing.)
-        // Wait, for continuation, we append to *userMessageId* which is actually the LAST ASSISTANT MESSAGE ID in that context?
-        // Let's check logic above: 
-        // if (req.body.isContinuation) userMessageId = lastAssistantMsg.id;
-        // So yes, userMessageId IS the assistant message ID in continuation mode.
+      if (!isAborted) {
+        res.write(`data: [DONE]\n\n`);
+      }
 
-        await withTransaction(async (client) => {
-          if (req.body.isContinuation) {
-            await appendMessageContent(userMessageId, fullAiReply, client);
-            savedMessageId = userMessageId;
-          } else {
-            // addMessage returns the NEW message ID
-            savedMessageId = await addMessage(sessionId, "assistant", fullAiReply, client, userMessageId);
+      /* -----------------------------
+         POST-STREAM PERSISTENCE
+         We await this BEFORE res.end() to guarantee it finishes in Lambda.
+      ----------------------------- */
+      if (fullAiReply && !isAborted) {
+        try {
+          // Update the existing assistant message with full content
+          await appendMessageContent(assistantMessageId, fullAiReply, pool);
+
+          // Background tasks (truly non-blocking)
+          if (sessionInfo?.user_id) {
+            setImmediate(async () => {
+              try {
+                const needsSummary = await sessionNeedsSummary(sessionId);
+                if (needsSummary) {
+                  await generateSessionSummary(sessionId);
+                }
+              } catch (err) {
+                logger.warn("Summary/Memory extraction failed", { error: err.message });
+              }
+            });
           }
-        });
-
-        // CRITICAL: Send the saved message ID to the client
-        // This allows the client to "trust" this message exists even if the next fetch 
-        // returns a stale list (replication lag).
-        res.write(`data: ${JSON.stringify({ messageId: savedMessageId })}\n\n`);
-
-        // Check if we should generate a session summary (async, non-blocking)
-        // Note: in Lambda, we might want to await this too if it's critical, 
-        // but for now we'll keep it as setImmediate to avoid delaying the response too much.
-        // However, technically if Lambda freezes, this might not run. 
-        // For strictly critical path (saving the message), we MUST await it (which we did above).
-        if (sessionInfo?.user_id) {
-          try {
-            const needsSummary = await sessionNeedsSummary(sessionId);
-            if (needsSummary) {
-              // We await this now to ensure it runs before Lambda freezes
-              await generateSessionSummary(sessionId);
-            }
-          } catch (err) {
-            logger.warn("Summary/Memory extraction failed", { error: err instanceof Error ? err.message : err });
-          }
+        } catch (dbErr) {
+          logger.error("Failed to persist final AI content", { error: dbErr.message, messageId: assistantMessageId });
         }
       }
 
-      if (!isAborted) {
-        // Stream finished normally
-        res.write(`data: [DONE]\n\n`);
-        res.end();
-      } else {
-        // Stream aborted
-        res.end();
-      }
+      // Finally close the stream
+      res.end();
 
     } catch (streamError) {
       logger.error("Streaming error", { error: streamError });

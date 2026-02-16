@@ -308,7 +308,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   /* ----------------------------------------------------------------
     CREATE NEW SESSION (SERVER + LOCAL STATE)
- ---------------------------------------------------------------- */
+  ---------------------------------------------------------------- */
   startNewSession: async (projectId: string | null = null) => {
     set({ pendingSession: true });
 
@@ -332,7 +332,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   /* ----------------------------------------------------------------
     SELECT SESSION & LOAD ITS MESSAGES
- ---------------------------------------------------------------- */
+  ---------------------------------------------------------------- */
   selectSession: async (id: string) => {
     await get().checkUsage(); // Proactive check on click
 
@@ -394,6 +394,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   /* ----------------------------------------------------------------
      SEND MESSAGE TO BACKEND + HANDLE RESPONSE
+     IMPROVED: Now handles replication lag by merging server messages
+     with local state to prevent messages from vanishing.
   ---------------------------------------------------------------- */
   sendMessage: async (content: string, parentId?: string | null, skipUserMessage?: boolean, isContinuation?: boolean) => {
     const { currentSessionId, messages } = get();
@@ -624,6 +626,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
               if (data.messageId) {
                 confirmedMessageId = data.messageId;
+                // Immediately update the assistant message ID in local state
+                // This ensures we don't lose the message during the final merge
+                set((state) => ({
+                  messages: state.messages.map((m) =>
+                    m.id === assistantMessageId ? { ...m, id: data.messageId } : m
+                  )
+                }));
+                assistantMessageId = data.messageId; // update local variable too
               }
 
               if (data.content) {
@@ -655,30 +665,51 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         get().loadSessions();
 
         // CRITICAL: Fetch the REAL messages from DB to get the UUIDs 
-        // replacing the temp_ai_ IDs. If we don't do this, the next user message
-        // will have parentId=undefined because we filter out temp IDs.
+        // replacing the temp_ai_ IDs. However, due to replication lag,
+        // the new message might not be in the DB yet. We merge with local state
+        // to prevent the assistant message from vanishing.
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const freshMessages: any[] = await api.get(`/api/sessions/${currentSessionId}/messages`);
+          const freshMessages: Message[] = await api.get(`/api/sessions/${currentSessionId}/messages`);
+
+          // Create a map of fresh messages by ID for quick lookup
+          const freshMap = new Map(freshMessages.map(m => [m.id, m]));
+
+          // Get current local messages
+          const currentMessages = get().messages;
+
+          // Locate the assistant message we just streamed (could be temp or confirmed ID)
+          const streamedAssistant = currentMessages.find(m =>
+            m.id === assistantMessageId || (confirmedMessageId && m.id === confirmedMessageId)
+          );
 
           // CLIENT-SIDE PATCH FOR REPLICATION LAG
           // If we have a confirmedMessageId but it's not in the fresh list yet,
           // manually append our local version (with the correct ID) to prevent vanishing.
-          if (confirmedMessageId && !freshMessages.find(m => m.id === confirmedMessageId)) {
-            console.warn("[Chat] Replication lag detected, preserving message locally", confirmedMessageId);
+          if (streamedAssistant && confirmedMessageId && !freshMap.has(confirmedMessageId)) {
+            console.warn("[Chat] Replication lag detected, preserving assistant message locally", confirmedMessageId);
 
-            // Find our local temp message which has the content we just streamed
-            const currentStoreMessages = get().messages;
-            const tempMessage = currentStoreMessages.find(m => m.id === assistantMessageId);
+            // Create a finalized message object using the confirmed ID
+            const preservedMessage = {
+              ...streamedAssistant,
+              id: confirmedMessageId,
+              // Ensure we don't keep temp ID
+            };
+            freshMessages.push(preservedMessage);
+          }
 
-            if (tempMessage) {
-              // Create a finalized message object using the confirmed ID
-              const preservedMessage = {
-                ...tempMessage,
-                id: confirmedMessageId,
-                // Ensure we don't keep temp ID
-              };
-              freshMessages.push(preservedMessage);
+          // Also ensure the user message (if any) is present in the merged result
+          if (!skipUserMessage && tempUserMessageId) {
+            const userMessage = currentMessages.find(m => m.id === tempUserMessageId);
+            // Check if a similar user message already exists (by content and role)
+            const userExists = freshMessages.some(m =>
+              m.role === 'user' &&
+              m.content === content &&
+              m.parentId === effectiveParentId
+            );
+            if (userMessage && !userExists) {
+              // If we can't find the user message, add it as a fallback
+              freshMessages.push(userMessage);
             }
           }
 
@@ -690,6 +721,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           }));
         } catch (err) {
           console.error("Failed to refresh messages after stream", err);
+          // If refresh fails, keep the current messages to prevent data loss
         }
       }
 
@@ -792,7 +824,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   /* ----------------------------------------------------------------
     RECEIVE AI REPLY (LOCAL ONLY)
- ---------------------------------------------------------------- */
+  ---------------------------------------------------------------- */
   receiveMessage: (content: string, requestId?: string, parentId?: string) => {
     set((state) => {
       // If this reply doesn't match the active request, ignore it (stale)

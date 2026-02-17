@@ -392,10 +392,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     });
   },
 
-  /* ----------------------------------------------------------------
+ /* ----------------------------------------------------------------
      SEND MESSAGE TO BACKEND + HANDLE RESPONSE
      IMPROVED: Now handles replication lag by merging server messages
      with local state to prevent messages from vanishing.
+     FIXED: Branching issues by properly maintaining parent-child relationships
   ---------------------------------------------------------------- */
   sendMessage: async (content: string, parentId?: string | null, skipUserMessage?: boolean, isContinuation?: boolean) => {
     const { currentSessionId, messages } = get();
@@ -459,6 +460,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const requestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const controller = new AbortController();
     const tempUserMessageId = `temp_user_${Date.now()}`;
+    
+    // Store the parentId for the assistant message to ensure correct threading
+    let assistantParentId = skipUserMessage ? parentId : tempUserMessageId;
 
     set((state) => {
       let newSessions = state.sessions;
@@ -540,6 +544,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       let assistantMessageId = "";
       let accumulatedContent = "";
       let confirmedMessageId: string | null = null;
+      let confirmedParentId: string | null = null;
 
       // Create a placeholder message for the assistant (if not continuation)
       set((state) => {
@@ -555,6 +560,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           if (targetMessage && targetMessage.role === 'assistant') {
             assistantMessageId = targetMessage.id || "";
             accumulatedContent = targetMessage.content;
+            assistantParentId = targetMessage.parentId; // Preserve the parent relationship
             return {
               awaitingSessionId: null,
               messages: state.messages.map(m =>
@@ -569,13 +575,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
         // IMPORTANT: Link to the temp user message ID if we just created one.
         // If regenerating (skipUserMessage), link to the existing parentId.
-        const parentIdForAssistant = skipUserMessage ? parentId : tempUserMessageId;
+        // Store this parent relationship - it's critical for threading
+        assistantParentId = skipUserMessage ? parentId : tempUserMessageId;
 
         const assistantMessage: Message = {
           id: assistantMessageId,
           role: "assistant",
           content: "",
-          parentId: parentIdForAssistant
+          parentId: assistantParentId  // Set the parent correctly from the start
         };
 
         return {
@@ -630,10 +637,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 // This ensures we don't lose the message during the final merge
                 set((state) => ({
                   messages: state.messages.map((m) =>
-                    m.id === assistantMessageId ? { ...m, id: data.messageId } : m
+                    m.id === assistantMessageId ? { 
+                      ...m, 
+                      id: data.messageId,
+                      parentId: assistantParentId // Preserve the parent relationship
+                    } : m
                   )
                 }));
                 assistantMessageId = data.messageId; // update local variable too
+              }
+
+              // If server sends parentId, use it (but our local one should be correct)
+              if (data.parentId) {
+                confirmedParentId = data.parentId;
               }
 
               if (data.content) {
@@ -642,7 +658,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 // Update the assistant message in the store
                 set((state) => ({
                   messages: state.messages.map((m) =>
-                    m.id === assistantMessageId ? { ...m, content: accumulatedContent } : m
+                    m.id === assistantMessageId ? { 
+                      ...m, 
+                      content: accumulatedContent,
+                      parentId: assistantParentId // Ensure parentId never gets lost
+                    } : m
                   ),
                   awaitingSessionId: null, // Clear loading state as soon as we have content
                 }));
@@ -690,10 +710,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             console.warn("[Chat] Replication lag detected, preserving assistant message locally", confirmedMessageId);
 
             // Create a finalized message object using the confirmed ID
+            // CRITICAL: Preserve the parentId to maintain correct threading
             const preservedMessage = {
               ...streamedAssistant,
               id: confirmedMessageId,
-              // Ensure we don't keep temp ID
+              parentId: assistantParentId, // Explicitly set the parent to ensure correct threading
             };
             freshMessages.push(preservedMessage);
           }
@@ -701,7 +722,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           // Also ensure the user message (if any) is present in the merged result
           if (!skipUserMessage && tempUserMessageId) {
             const userMessage = currentMessages.find(m => m.id === tempUserMessageId);
-            // Check if a similar user message already exists (by content and role)
+            // Check if a similar user message already exists (by content, role, AND parentId)
             const userExists = freshMessages.some(m =>
               m.role === 'user' &&
               m.content === content &&
@@ -713,10 +734,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             }
           }
 
+          // Sort messages to ensure proper order based on parent-child relationships
+          // This helps maintain visual order even if messages arrive out of sequence
+          const sortedMessages = sortMessagesByThread(freshMessages, get().activeVersions);
+
           set((s) => ({
-            messages: freshMessages,
+            messages: sortedMessages,
             sessions: s.sessions.map((sess) =>
-              sess.id === currentSessionId ? { ...sess, messages: freshMessages } : sess
+              sess.id === currentSessionId ? { ...sess, messages: sortedMessages } : sess
             )
           }));
         } catch (err) {

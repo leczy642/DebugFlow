@@ -18,7 +18,6 @@ const firebaseConfig = {
 // We check getApps().length to prevent multiple initializations during HMR (Hot Module Replacement)
 // We also check for configuration to prevent crashes during static generation in Vercel if env vars are missing
 let app;
-const isBuildTime = !firebaseConfig.apiKey;
 
 if (getApps().length > 0) {
     app = getApp();

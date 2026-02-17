@@ -237,8 +237,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   loadSessions: async () => {
     await get().checkUsage();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sessionsData: any[] = await api.get("/api/sessions");
+    const sessionsData = await api.get("/api/sessions") as Session[];
 
     set((state) => ({
       sessions: sessionsData.map((s) => {
@@ -394,8 +393,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     });
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const messages: any = await api.get(`/api/sessions/${id}/messages`, { signal: controller.signal });
+      const messages = await api.get(`/api/sessions/${id}/messages`, { signal: controller.signal }) as Message[];
 
       const state = get();
       if (state.currentSessionId !== id) return;
@@ -407,8 +405,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         sessionLoadAbortController: null,
         sessions: s.sessions.map((sess) => (sess.id === id ? { ...sess, messages } : sess)),
       }));
-    } catch (err: any) {
-      if (err?.name === "AbortError") return;
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") return;
 
       const state = get();
       if (state.currentSessionId === id && state.sessionLoadRequestId === requestId) {
@@ -485,7 +483,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     let assistantParentId = skipUserMessage ? parentId : tempUserMessageId;
 
     set((state) => {
-      let newSyncState: any = {
+      const newSyncState: Partial<ChatStore> = {
         isStreaming: true,
         activeRequestId: requestId,
         abortController: controller,
@@ -542,6 +540,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       // --- 3. AUTH & NETWORK ---
       const authHeaders = await getAuthHeaders();
 
+      // eslint-disable-next-line no-console
       console.log("[Chat Debug] Sending to Backend:", {
         sessionId: currentSessionId,
         message: content,
@@ -759,8 +758,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       set({ activeRequestId: null, abortController: null, isStreaming: false });
 
-    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-      if (err.name === 'AbortError') return;
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') return;
       get().receiveMessage("⚠️ Error processing request", requestId);
       set({ isStreaming: false });
     } finally {

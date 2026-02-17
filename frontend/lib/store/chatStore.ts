@@ -49,6 +49,7 @@ type Message = {
   parentId?: string | null;
   isDeleted?: boolean;
   wasManuallyStopped?: boolean;
+  created_at?: string;
 };
 
 type Session = {
@@ -127,6 +128,73 @@ type ChatStore = {
   deleteMessage: (id: string) => Promise<void>;
   restoreMessage: (id: string) => Promise<void>;
 };
+
+// Helper function to sort messages in thread order
+function sortMessagesByThread(messages: Message[], activeVersions: Record<string, string>): Message[] {
+  if (!messages.length) return messages;
+
+  // Build the message tree
+  const childrenMap = new Map<string, Message[]>();
+  const roots: Message[] = [];
+  const messageMap = new Map<string, Message>();
+
+  messages.forEach(m => {
+    if (m.id) messageMap.set(m.id, m);
+    if (m.parentId) {
+      if (!childrenMap.has(m.parentId)) childrenMap.set(m.parentId, []);
+      childrenMap.get(m.parentId)!.push(m);
+    } else {
+      roots.push(m);
+    }
+  });
+
+  // Sort children by created_at if available
+  childrenMap.forEach((children, parentId) => {
+    children.sort((a, b) => {
+      if (a.created_at && b.created_at) {
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      }
+      return 0;
+    });
+  });
+
+  // Flatten the tree in order
+  const result: Message[] = [];
+  
+  function traverse(currentSiblings: Message[], parentKey: string = 'root') {
+    if (!currentSiblings.length) return;
+    
+    const activeId = activeVersions[parentKey];
+    let activeIndex = -1;
+    
+    if (activeId) {
+      activeIndex = currentSiblings.findIndex(m => m.id === activeId);
+    }
+    
+    if (activeIndex === -1) {
+      // If no active version, include all siblings
+      for (let i = 0; i < currentSiblings.length; i++) {
+        const msg = currentSiblings[i];
+        result.push(msg);
+        if (msg.id && childrenMap.has(msg.id)) {
+          traverse(childrenMap.get(msg.id)!, msg.id);
+        }
+      }
+    } else {
+      // Only follow the active branch
+      for (let i = 0; i <= activeIndex; i++) {
+        const msg = currentSiblings[i];
+        result.push(msg);
+        if (i === activeIndex && msg.id && childrenMap.has(msg.id)) {
+          traverse(childrenMap.get(msg.id)!, msg.id);
+        }
+      }
+    }
+  }
+  
+  traverse(roots);
+  return result;
+}
 
 export const useChatStore = create<ChatStore>((set, get) => ({
   sessions: [],
@@ -359,7 +427,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     });
 
     try {
-      // api.get might not support {signal}; if it doesn't, the requestId guards still prevent stale state updates.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const messages: any = await api.get(`/api/sessions/${id}/messages`, { signal: controller.signal });
 
@@ -392,7 +459,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     });
   },
 
- /* ----------------------------------------------------------------
+  /* ----------------------------------------------------------------
      SEND MESSAGE TO BACKEND + HANDLE RESPONSE
      IMPROVED: Now handles replication lag by merging server messages
      with local state to prevent messages from vanishing.
@@ -473,7 +540,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           content,
           parentId: effectiveParentId || null
         };
-        // Reorder sessions logic...
+        // Reorder sessions logic
         const currentSession = state.sessions.find((s) => s.id === currentSessionId);
         if (currentSession && !currentSession.pinned) {
           const otherSessions = state.sessions.filter((s) => s.id !== currentSessionId);

@@ -61,6 +61,10 @@ router.post("/", requireNotBlocked, async (req, res) => {
       validatedParentId = null;
     }
 
+    // Check if this is the first message to trigger title generation
+    const isFirstMessage = (sessionState?.messages || []).length === 0;
+    let generatedTitle = null;
+
     if (req.body.isContinuation) {
       const lastAssistantMsg = (sessionState?.messages || [])
         .filter(m => m.role === 'assistant' && !m.isDeleted)
@@ -78,12 +82,31 @@ router.post("/", requireNotBlocked, async (req, res) => {
       } else {
         userMessageId = validatedParentId;
       }
+
+      // Generate title for the first real user message
+      if (isFirstMessage && !skipUserMessage) {
+        try {
+          generatedTitle = await generateSessionTitle(message);
+          await pool.query(
+            `UPDATE sessions SET title = $2, updated_at = NOW() WHERE id = $1`,
+            [sessionId, generatedTitle]
+          );
+        } catch (err) {
+          logger.warn("Title generation failed", { error: err.message });
+        }
+      }
+
       // Create ASSISTANT message (Correct Branching: linked to User)
       assistantMessageId = await addMessage(sessionId, "assistant", "", pool, userMessageId);
     }
 
     // STREAM THE ID IMMEDIATELY (Reduces vanishing message risk)
     res.write(`data: ${JSON.stringify({ messageId: assistantMessageId })}\n\n`);
+
+    // Stream the title if generated
+    if (generatedTitle) {
+      res.write(`data: ${JSON.stringify({ title: generatedTitle })}\n\n`);
+    }
 
     /* -----------------------------
        3. HISTORY RECONSTRUCTION (Linear)

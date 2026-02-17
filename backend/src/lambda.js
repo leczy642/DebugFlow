@@ -40,7 +40,10 @@ async function handleBuffered(event, responseStream) {
             : (result.body || '')
     );
     responseStream.end();
-    await responseStream.finished();
+    await new Promise((resolve) => {
+        responseStream.on('finish', resolve);
+        responseStream.on('close', resolve);
+    });
 }
 
 async function handleChatStreaming(event, responseStream) {
@@ -69,7 +72,8 @@ async function handleChatStreaming(event, responseStream) {
     const res = new http.ServerResponse(req);
     res.assignSocket(fakeSocket);
 
-    let preambleSent = false;
+    // Stable reference to whichever stream is currently active (raw or wrapped)
+    let activeStream = responseStream;
 
     const sendPreamble = () => {
         if (preambleSent) return;
@@ -78,18 +82,19 @@ async function handleChatStreaming(event, responseStream) {
             statusCode: res.statusCode || 200,
             headers: res.getHeaders()
         };
-        responseStream = awslambda.HttpResponseStream.from(responseStream, metadata);
+        // Update both the high-level variable and the scoped activeStream
+        activeStream = awslambda.HttpResponseStream.from(responseStream, metadata);
     };
 
     res.write = function (chunk, encoding, callback) {
         sendPreamble();
-        return responseStream.write(chunk, encoding, callback);
+        return activeStream.write(chunk, encoding, callback);
     };
 
     res.end = function (chunk, encoding, callback) {
         sendPreamble();
-        if (chunk) responseStream.write(chunk, encoding);
-        responseStream.end();
+        if (chunk) activeStream.write(chunk, encoding);
+        activeStream.end();
         res.emit('finish');
         if (typeof callback === 'function') callback();
     };
@@ -107,7 +112,11 @@ async function handleChatStreaming(event, responseStream) {
 
     app.handle(req, res);
 
+    // CRITICAL: We must wait for the ACTUAL stream that receives the end() call.
     await new Promise((resolve) => {
+        // We listen to both just in case, but activeStream is the important one.
+        activeStream.on('finish', resolve);
+        activeStream.on('close', resolve);
         responseStream.on('finish', resolve);
         responseStream.on('close', resolve);
     });

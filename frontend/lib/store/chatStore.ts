@@ -83,21 +83,15 @@ type ChatStore = {
   clearRateLimit: () => void;
   checkUsage: () => Promise<void>;
 
-  // Tracks the in-flight request that should be accepted when a reply arrives.
-  // When starting a new session or cancelling, this is set to null so older
-  // responses are ignored.
   activeRequestId: string | null;
 
-  // Threading
   activeVersions: Record<string, string>;
   setActiveVersion: (parentId: string, messageId: string) => void;
 
-  // Session switching (message load) control to avoid stale updates + speed up switching
   loadingSessionId: string | null;
   sessionLoadRequestId: string | null;
   sessionLoadAbortController: AbortController | null;
 
-  // Reset UI/chat to default view (no active session, empty messages)
   resetToDefault: () => void;
   stopGeneration: () => void;
 
@@ -114,10 +108,9 @@ type ChatStore = {
   startNewSession: (projectId?: string | null) => Promise<void>;
   selectSession: (id: string) => Promise<void>;
   selectProject: (id: string | null) => void;
-  sendMessage: (content: string, parentId?: string | null, skipUserMessage?: boolean, isContinuation?: boolean) => Promise<void>;
+  sendMessage: (content: string, parentId?: string | null, skipUserMessage?: boolean, isContinuation?: boolean, projectIdForNewSession?: string | null) => Promise<void>;
   editMessage: (messageId: string, newContent: string) => Promise<void>;
   regenerateResponse: (messageId: string) => Promise<void>;
-  // Optional requestId used to ignore stale replies (when user started a new session)
   receiveMessage: (content: string, requestId?: string, parentId?: string) => void;
   getLastActiveMessage: () => Message | null;
 
@@ -129,11 +122,9 @@ type ChatStore = {
   restoreMessage: (id: string) => Promise<void>;
 };
 
-// Helper function to sort messages in thread order
 function sortMessagesByThread(messages: Message[], activeVersions: Record<string, string>): Message[] {
   if (!messages.length) return messages;
 
-  // Build the message tree
   const childrenMap = new Map<string, Message[]>();
   const roots: Message[] = [];
   const messageMap = new Map<string, Message>();
@@ -148,8 +139,7 @@ function sortMessagesByThread(messages: Message[], activeVersions: Record<string
     }
   });
 
-  // Sort children by created_at if available
-  childrenMap.forEach((children, parentId) => {
+  childrenMap.forEach((children) => {
     children.sort((a, b) => {
       if (a.created_at && b.created_at) {
         return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
@@ -158,7 +148,6 @@ function sortMessagesByThread(messages: Message[], activeVersions: Record<string
     });
   });
 
-  // Flatten the tree in order
   const result: Message[] = [];
 
   function traverse(currentSiblings: Message[], parentKey: string = 'root') {
@@ -172,7 +161,6 @@ function sortMessagesByThread(messages: Message[], activeVersions: Record<string
     }
 
     if (activeIndex === -1) {
-      // If no active version, include all siblings
       for (let i = 0; i < currentSiblings.length; i++) {
         const msg = currentSiblings[i];
         result.push(msg);
@@ -181,7 +169,6 @@ function sortMessagesByThread(messages: Message[], activeVersions: Record<string
         }
       }
     } else {
-      // Only follow the active branch
       for (let i = 0; i <= activeIndex; i++) {
         const msg = currentSiblings[i];
         result.push(msg);
@@ -217,7 +204,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const profile = await api.get("/api/user/profile/full");
       const { role, tier, daily_requests_count, rate_limit_reset_at } = profile;
 
-      // Super users are exempt from rate limits
       if (role === 'super_user') {
         set({ rateLimitedUntil: null });
         return;
@@ -231,11 +217,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const resetAt = new Date(rate_limit_reset_at || Date.now());
         let nextResetAt = new Date(resetAt.getTime() + 24 * 60 * 60 * 1000);
 
-        // If the calculated reset time is in the past but the count is still high,
-        // it means the backend hasn't hit its 24h reset window yet.
-        // We ensure a valid future string is set so UI stays disabled.
         if (nextResetAt.getTime() <= Date.now()) {
-          nextResetAt = new Date(Date.now() + 60 * 60 * 1000); // Fallback to 1 hour from now
+          nextResetAt = new Date(Date.now() + 60 * 60 * 1000);
         }
 
         set({ rateLimitedUntil: nextResetAt.toISOString() });
@@ -252,9 +235,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   sessionLoadAbortController: null,
   activeVersions: {},
 
-  /* ----------------------------------------------------------------
-     LOAD EXISTING SESSIONS FROM SERVER
-  ---------------------------------------------------------------- */
   loadSessions: async () => {
     await get().checkUsage();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -262,7 +242,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     set((state) => ({
       sessions: sessionsData.map((s) => {
-        // Find if we already have this session and preserve its message cache if any
         const existing = state.sessions.find((prev) => prev.id === s.id);
         return {
           ...s,
@@ -303,7 +282,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const prevProjects = get().projects;
     const prevSessions = get().sessions;
 
-    // Optimistic delete: remove project, move its sessions to root (project_id = null)
     set((state) => ({
       projects: state.projects.filter(p => p.id !== id),
       sessions: state.sessions.map(s => s.project_id === id ? { ...s, project_id: null } : s)
@@ -362,7 +340,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   getProjectWithContext: async (id: string) => {
     try {
       const project = await api.get(`/api/projects/${id}`);
-      // Update local state with full project data
       set((state) => ({
         projects: state.projects.map((p) =>
           p.id === id ? { ...p, ...project } : p
@@ -374,16 +351,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  /* ----------------------------------------------------------------
-    CREATE NEW SESSION (SERVER + LOCAL STATE)
-  ---------------------------------------------------------------- */
   startNewSession: async (projectId: string | null = null) => {
     set({ pendingSession: true });
 
     const session = await api.post("/api/sessions", { project_id: projectId });
 
     set((state) => {
-      // Insert new unpinned session after all pinned sessions
       const pinned = state.sessions.filter((s) => s.pinned);
       const unpinned = state.sessions.filter((s) => !s.pinned);
 
@@ -398,20 +371,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     });
   },
 
-  /* ----------------------------------------------------------------
-    SELECT SESSION & LOAD ITS MESSAGES
-  ---------------------------------------------------------------- */
   selectSession: async (id: string) => {
-    await get().checkUsage(); // Proactive check on click
+    await get().checkUsage();
 
-    // Abort any in-flight session message load to prevent "late" updates
     const prev = get().sessionLoadAbortController;
     if (prev) prev.abort();
 
     const requestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const controller = new AbortController();
 
-    // Show cached messages immediately if we already loaded this session once
     const cached = get().sessions.find((s) => s.id === id)?.messages;
     const isAlreadyActive = get().currentSessionId === id;
 
@@ -422,7 +390,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       loadingSessionId: id,
       sessionLoadRequestId: requestId,
       sessionLoadAbortController: controller,
-      // Only reset messages to [] if we aren't already on this session and have no cache
       messages: cached && cached.length ? cached : (isAlreadyActive ? get().messages : []),
     });
 
@@ -453,7 +420,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   selectProject: (id: string | null) => {
     set({
       selectedProjectId: id,
-      currentSessionId: null, // Deselect any active session
+      currentSessionId: null,
       messages: [],
       pendingSession: false,
     });
@@ -465,16 +432,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
      with local state to prevent messages from vanishing.
      FIXED: Branching issues by properly maintaining parent-child relationships
   ---------------------------------------------------------------- */
-  sendMessage: async (content: string, parentId?: string | null, skipUserMessage?: boolean, isContinuation?: boolean) => {
-    const { currentSessionId, messages } = get();
-    if (!currentSessionId) return;
+  sendMessage: async (content: string, parentId?: string | null, skipUserMessage?: boolean, isContinuation?: boolean, projectIdForNewSession?: string | null) => {
+    let currentSessionId = get().currentSessionId;
 
-    // If no parentId is provided (normal chat flow), use the leaf of the CURRENT ACTIVE BRANCH
-    // This ensures linear conversation history based on what the user is seeing.
-    // If skipUserMessage is true (regeneration), parentId MUST be provided by caller.
+    // --- 1. INSTANT SYNCHRONOUS UI UPDATE ---
+    const requestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const controller = new AbortController();
+    const tempUserMessageId = `temp_user_${Date.now()}`;
+
     let effectiveParentId = parentId;
     if (effectiveParentId === undefined && !skipUserMessage) {
-      // Traverse the thread using activeVersions to find the leaf
       const { messages, activeVersions } = get();
       if (messages.length > 0) {
         const childrenMap = new Map<string, Message[]>();
@@ -495,16 +462,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
         while (currentSiblings.length > 0) {
           const activeId = activeVersions[parentIdKey];
-          let activeIndex = -1;
-
-          if (activeId) {
-            activeIndex = currentSiblings.findIndex(m => m.id === activeId);
-          }
-
-          // Default to latest if no active selection
-          if (activeIndex === -1) {
-            activeIndex = currentSiblings.length - 1;
-          }
+          let activeIndex = currentSiblings.findIndex(m => m.id === activeId);
+          if (activeIndex === -1) activeIndex = currentSiblings.length - 1;
 
           const activeMessage = currentSiblings[activeIndex];
           lastMsg = activeMessage;
@@ -523,16 +482,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     }
 
-    // Create a small locally-unique request id so we can ignore stale replies
-    const requestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    const controller = new AbortController();
-    const tempUserMessageId = `temp_user_${Date.now()}`;
-
-    // Store the parentId for the assistant message to ensure correct threading
     let assistantParentId = skipUserMessage ? parentId : tempUserMessageId;
 
     set((state) => {
-      let newSessions = state.sessions;
+      let newSyncState: any = {
+        isStreaming: true,
+        activeRequestId: requestId,
+        abortController: controller,
+      };
+
       if (!skipUserMessage && !isContinuation) {
         const userMessage: Message = {
           id: tempUserMessageId,
@@ -540,36 +498,50 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           content,
           parentId: effectiveParentId || null
         };
-        // Reorder sessions logic
-        const currentSession = state.sessions.find((s) => s.id === currentSessionId);
-        if (currentSession && !currentSession.pinned) {
-          const otherSessions = state.sessions.filter((s) => s.id !== currentSessionId);
-          const pinned = otherSessions.filter((s) => s.pinned);
-          const unpinned = otherSessions.filter((s) => !s.pinned);
-          newSessions = [...pinned, currentSession, ...unpinned];
+        newSyncState.messages = [...state.messages, userMessage];
+
+        if (currentSessionId) {
+          const currentSession = state.sessions.find((s) => s.id === currentSessionId);
+          if (currentSession && !currentSession.pinned) {
+            const otherSessions = state.sessions.filter((s) => s.id !== currentSessionId);
+            const pinned = otherSessions.filter((s) => s.pinned);
+            const unpinned = otherSessions.filter((s) => !s.pinned);
+            newSyncState.sessions = [...pinned, currentSession, ...unpinned];
+          }
         }
-        return {
-          messages: [...state.messages, userMessage],
-          sessions: newSessions,
-          awaitingSessionId: currentSessionId,
-          isStreaming: true,
-          activeRequestId: requestId,
-          abortController: controller,
-        };
       }
 
-      return {
-        awaitingSessionId: currentSessionId,
-        isStreaming: true,
-        activeRequestId: requestId,
-        abortController: controller,
-      };
+      if (currentSessionId) {
+        newSyncState.awaitingSessionId = currentSessionId;
+      }
+
+      return newSyncState;
     });
 
     try {
+      // --- 2. BACKGROUND SESSION CREATION (If needed) ---
+      if (!currentSessionId) {
+        set({ pendingSession: true });
+        const session = await api.post("/api/sessions", { project_id: projectIdForNewSession });
+
+        currentSessionId = session.id;
+        set((state) => {
+          const pinned = state.sessions.filter((s) => s.pinned);
+          const unpinned = state.sessions.filter((s) => !s.pinned);
+          const newSessionWithMeta = { ...session, messages: [], pinned: false, project_id: projectIdForNewSession };
+
+          return {
+            currentSessionId: session.id,
+            sessions: [...pinned, newSessionWithMeta, ...unpinned],
+            pendingSession: false,
+            awaitingSessionId: session.id
+          };
+        });
+      }
+
+      // --- 3. AUTH & NETWORK ---
       const authHeaders = await getAuthHeaders();
 
-      // DEBUG: Log the payload being sent
       console.log("[Chat Debug] Sending to Backend:", {
         sessionId: currentSessionId,
         message: content,
@@ -601,7 +573,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         throw new Error("Failed to send message");
       }
 
-      set({ rateLimitedUntil: null }); // Clear on success
+      set({ rateLimitedUntil: null });
 
       if (!res.body) return;
 
@@ -611,15 +583,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       let assistantMessageId = "";
       let accumulatedContent = "";
       let confirmedMessageId: string | null = null;
-      let confirmedParentId: string | null = null;
 
-      // Create a placeholder message for the assistant (if not continuation)
       set((state) => {
-        // Only add if we are the active request
         if (state.activeRequestId !== requestId) return {};
 
         if (isContinuation) {
-          // Find the specific assistant message to append to (using parentId if provided, which should be the AI msg ID)
           const targetMessage = parentId
             ? state.messages.find(m => m.id === parentId)
             : [...state.messages].reverse().find(m => m.role === 'assistant');
@@ -627,7 +595,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           if (targetMessage && targetMessage.role === 'assistant') {
             assistantMessageId = targetMessage.id || "";
             accumulatedContent = targetMessage.content;
-            assistantParentId = targetMessage.parentId; // Preserve the parent relationship
+            assistantParentId = targetMessage.parentId;
             return {
               awaitingSessionId: null,
               messages: state.messages.map(m =>
@@ -637,24 +605,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           }
         }
 
-        // Generate a temporary ID for the assistant message so we can update it
         assistantMessageId = `temp_ai_${Date.now()}`;
-
-        // IMPORTANT: Link to the temp user message ID if we just created one.
-        // If regenerating (skipUserMessage), link to the existing parentId.
-        // Store this parent relationship - it's critical for threading
         assistantParentId = skipUserMessage ? parentId : tempUserMessageId;
 
         const assistantMessage: Message = {
           id: assistantMessageId,
           role: "assistant",
           content: "",
-          parentId: assistantParentId  // Set the parent correctly from the start
+          parentId: assistantParentId
         };
 
         return {
           messages: [...state.messages, assistantMessage],
-          // awaitingSessionId remains set to keep TypingBubble visible until content arrives
         };
       });
 
@@ -665,15 +627,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         done = doneReading;
         const chunkValue = decoder.decode(value, { stream: !done });
 
-        // DEBUG: Log the raw chunk value to see what's coming from Lambda
-        console.log("[Chat Debug] Received chunk:", chunkValue);
-
         buffer += chunkValue;
         const lines = buffer.split("\n");
-
-        // The last line might be incomplete, so we keep it in the buffer
-        // and process it in the next iteration.
-        // Unless we are done, in which case we process everything.
         buffer = lines.pop() || "";
 
         for (const line of lines) {
@@ -687,9 +642,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             try {
               const data = JSON.parse(dataStr);
 
-              // Handle status updates for Ultra-Fast Start
               if (data.status) {
-                console.info("[Chat Status]", data.status);
                 if (data.status === "connecting" || data.status === "building_context") {
                   set({ awaitingSessionId: null });
                 }
@@ -697,7 +650,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               }
 
               if (data.userMessageId) {
-                // IMPORTANT: Replace temp user message ID and update AI parent linkage
                 set((state) => ({
                   messages: state.messages.map((m) => {
                     if (m.id === tempUserMessageId) return { ...m, id: data.userMessageId };
@@ -705,12 +657,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                     return m;
                   })
                 }));
-                // Update assistantParentId local ref so it matches the new ID
                 assistantParentId = data.userMessageId;
               }
 
               if (data.title) {
-                // Handle title update
                 set((state) => {
                   const found = state.sessions.some((s) => s.id === currentSessionId);
                   const updatedSessions = found
@@ -722,38 +672,30 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
               if (data.messageId) {
                 confirmedMessageId = data.messageId;
-                // Immediately update the assistant message ID in local state
-                // This ensures we don't lose the message during the final merge
                 set((state) => ({
                   messages: state.messages.map((m) =>
                     m.id === assistantMessageId ? {
                       ...m,
                       id: data.messageId,
-                      parentId: assistantParentId // Preserve the parent relationship
+                      parentId: assistantParentId
                     } : m
                   )
                 }));
-                assistantMessageId = data.messageId; // update local variable too
-              }
-
-              // If server sends parentId, use it (but our local one should be correct)
-              if (data.parentId) {
-                confirmedParentId = data.parentId;
+                assistantMessageId = data.messageId;
               }
 
               if (data.content) {
                 accumulatedContent += data.content;
 
-                // Update the assistant message in the store
                 set((state) => ({
                   messages: state.messages.map((m) =>
                     m.id === assistantMessageId ? {
                       ...m,
                       content: accumulatedContent,
-                      parentId: assistantParentId // Ensure parentId never gets lost
+                      parentId: assistantParentId
                     } : m
                   ),
-                  awaitingSessionId: null, // Clear loading state as soon as we have content
+                  awaitingSessionId: null,
                 }));
               }
 
@@ -768,63 +710,40 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
       }
 
-      // After response is done, refresh to get the real DB data (IDs + title)
       if (get().currentSessionId === currentSessionId) {
-        // Refresh metadata (title, etc)
         get().loadSessions();
 
-        // CRITICAL: Fetch the REAL messages from DB to get the UUIDs 
-        // replacing the temp_ai_ IDs. However, due to replication lag,
-        // the new message might not be in the DB yet. We merge with local state
-        // to prevent the assistant message from vanishing.
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const freshMessages: Message[] = await api.get(`/api/sessions/${currentSessionId}/messages`);
-
-          // Create a map of fresh messages by ID for quick lookup
           const freshMap = new Map(freshMessages.map(m => [m.id, m]));
-
-          // Get current local messages
           const currentMessages = get().messages;
 
-          // Locate the assistant message we just streamed (could be temp or confirmed ID)
           const streamedAssistant = currentMessages.find(m =>
             m.id === assistantMessageId || (confirmedMessageId && m.id === confirmedMessageId)
           );
 
-          // CLIENT-SIDE PATCH FOR REPLICATION LAG
-          // If we have a confirmedMessageId but it's not in the fresh list yet,
-          // manually append our local version (with the correct ID) to prevent vanishing.
           if (streamedAssistant && confirmedMessageId && !freshMap.has(confirmedMessageId)) {
-            console.warn("[Chat] Replication lag detected, preserving assistant message locally", confirmedMessageId);
-
-            // Create a finalized message object using the confirmed ID
-            // CRITICAL: Preserve the parentId to maintain correct threading
             const preservedMessage = {
               ...streamedAssistant,
               id: confirmedMessageId,
-              parentId: assistantParentId, // Explicitly set the parent to ensure correct threading
+              parentId: assistantParentId,
             };
             freshMessages.push(preservedMessage);
           }
 
-          // Also ensure the user message (if any) is present in the merged result
           if (!skipUserMessage && tempUserMessageId) {
             const userMessage = currentMessages.find(m => m.id === tempUserMessageId);
-            // Check if a similar user message already exists (by content, role, AND parentId)
             const userExists = freshMessages.some(m =>
               m.role === 'user' &&
               m.content === content &&
               m.parentId === effectiveParentId
             );
             if (userMessage && !userExists) {
-              // If we can't find the user message, add it as a fallback
               freshMessages.push(userMessage);
             }
           }
 
-          // Sort messages to ensure proper order based on parent-child relationships
-          // This helps maintain visual order even if messages arrive out of sequence
           const sortedMessages = sortMessagesByThread(freshMessages, get().activeVersions);
 
           set((s) => ({
@@ -835,17 +754,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           }));
         } catch (err) {
           console.error("Failed to refresh messages after stream", err);
-          // If refresh fails, keep the current messages to prevent data loss
         }
       }
 
       set({ activeRequestId: null, abortController: null, isStreaming: false });
 
     } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-      if (err.name === 'AbortError') {
-        return;
-      }
-
+      if (err.name === 'AbortError') return;
       get().receiveMessage("⚠️ Error processing request", requestId);
       set({ isStreaming: false });
     } finally {
@@ -857,21 +772,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const { messages, sendMessage } = get();
     const messageToRegenerate = messages.find((m) => m.id === messageId);
     if (!messageToRegenerate) return;
-
-    // If it's an assistant message, we want to regenerate the response to its PARENT (the user message).
-    // So we find the parent.
     if (messageToRegenerate.role === "assistant") {
       const parentId = messageToRegenerate.parentId;
-      if (!parentId) return; // Can't regenerate if no parent (orphan)
-
+      if (!parentId) return;
       const parentMessage = messages.find((m) => m.id === parentId);
       if (!parentMessage) return;
-
-      // New requirement: If the message to regenerate is empty or manually stopped (e.g. error/empty state),
-      // remove it so the new generation replaces it visually.
       if (!messageToRegenerate.content || messageToRegenerate.wasManuallyStopped) {
         set((state) => ({
-          messages: state.messages.map(m => m.id === messageId ? { ...m, isDeleted: true } : m).filter(m => m.id !== messageId) // Hard remove from memory for "disappear" effect
+          messages: state.messages.map(m => m.id === messageId ? { ...m, isDeleted: true } : m).filter(m => m.id !== messageId)
         }));
         try {
           if (messageId && !messageId.startsWith('temp_')) {
@@ -879,12 +787,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           }
         } catch (e) { console.error("Failed to delete empty message", e); }
       }
-
-      // Resend the parent message content, linked to the SAME parent ID as the user message?
-      // No, we want to send a NEW request that is a child of the USER message.
-      // So we pass parentId = parentMessage.id (the user message ID)
-      // And skipUserMessage = true (so we don't create a duplicate user message)
-
       await sendMessage(parentMessage.content, parentMessage.id, true);
     }
   },
@@ -893,27 +795,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const { messages, sendMessage } = get();
     const originalMessage = messages.find((m) => m.id === messageId);
     if (!originalMessage) return;
-
-    // To "edit" a message, we create a NEW message with the SAME parentId.
-    // This makes it a sibling of the original message (a new version/slide).
-    // If the original message was a root (no parent), we pass null/undefined as parentId.
-    // We do NOT use skipUserMessage because this IS a user message (the edited version).
-
-    // Note: sendMessage logic will auto-assign parentId if not provided. 
-    // But here we explicitly want to use the ORIGINAL parentId, not the "last message" ID.
-    // So we must pass it explicitly.
-
     await sendMessage(newContent, originalMessage.parentId);
   },
 
   deleteMessage: async (id: string) => {
     const prevMessages = get().messages;
-
-    // Optimistic soft delete: mark as deleted instead of removing
     set((state) => ({
       messages: state.messages.map((m) => m.id === id ? { ...m, isDeleted: true } : m),
     }));
-
     try {
       await api.delete(`/api/messages/${id}`);
     } catch {
@@ -923,12 +812,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   restoreMessage: async (id: string) => {
     const prevMessages = get().messages;
-
-    // Optimistic restore
     set((state) => ({
       messages: state.messages.map((m) => m.id === id ? { ...m, isDeleted: false } : m),
     }));
-
     try {
       await api.post(`/api/messages/${id}/restore`, {});
     } catch {
@@ -936,19 +822,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  /* ----------------------------------------------------------------
-    RECEIVE AI REPLY (LOCAL ONLY)
-  ---------------------------------------------------------------- */
   receiveMessage: (content: string, requestId?: string, parentId?: string) => {
     set((state) => {
-      // If this reply doesn't match the active request, ignore it (stale)
       if (requestId && state.activeRequestId !== requestId) {
         return {} as Partial<ChatStore>;
       }
-
       const assistantMessage: Message = { role: "assistant", content, parentId: parentId || null };
       const updatedMessages = [...state.messages, assistantMessage];
-
       return {
         messages: updatedMessages,
         awaitingSessionId: null,
@@ -956,15 +836,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         activeRequestId: null,
       };
     });
-
     setTimeout(() => set({ lastUpdatedSessionId: null }), 350);
   },
 
-  /* ----------------------------------------------------------------
-     UI HELPERS (OPTIMISTIC UPDATES + SERVER PERSISTENCE)
-  ---------------------------------------------------------------- */
-  renameSession: (id, newTitle) =>
-    // Optimistic update: update UI immediately, persist to server, rollback on failure
+  renameSession: (id: string, newTitle: string) =>
     (async (id: string, newTitle: string) => {
       const prev = get().sessions;
       const trimmed = newTitle.trim();
@@ -973,7 +848,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           s.id === id ? { ...s, title: trimmed } : s
         ),
       }));
-
       try {
         await api.patch(`/api/sessions/${id}`, { title: trimmed });
       } catch {
@@ -981,23 +855,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     })(id, newTitle),
 
-  pinSession: (id) =>
-    // Optimistic pin with server persistence
+  pinSession: (id: string) =>
     (async (id: string) => {
       const prev = get().sessions;
       const sessionToPin = prev.find((s) => s.id === id);
       if (!sessionToPin) return;
-
-      // Update pinned status
       const updatedSession = { ...sessionToPin, pinned: true };
-
-      // Reorder: New pinned session goes to TOP of pinned list
-      // (assuming user wants their most recently pinned item accessible, or we treat it as "updated")
       const otherPinned = prev.filter((s) => s.id !== id && s.pinned);
       const unpinned = prev.filter((s) => s.id !== id && !s.pinned);
-
       set({ sessions: [updatedSession, ...otherPinned, ...unpinned] });
-
       try {
         await api.patch(`/api/sessions/${id}`, { pinned: true });
       } catch {
@@ -1005,21 +871,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     })(id),
 
-  unpinSession: (id) =>
-    // Optimistic unpin with server persistence
+  unpinSession: (id: string) =>
     (async (id: string) => {
       const prev = get().sessions;
       const sessionToUnpin = prev.find((s) => s.id === id);
       if (!sessionToUnpin) return;
-
       const updatedSession = { ...sessionToUnpin, pinned: false };
-
-      // Reorder: Unpinned session goes to TOP of unpinned list (recently modified)
       const pinned = prev.filter((s) => s.id !== id && s.pinned);
       const otherUnpinned = prev.filter((s) => s.id !== id && !s.pinned);
-
       set({ sessions: [...pinned, updatedSession, ...otherUnpinned] });
-
       try {
         await api.patch(`/api/sessions/${id}`, { pinned: false });
       } catch {
@@ -1027,25 +887,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     })(id),
 
-  deleteSession: async (id) => {
+  deleteSession: async (id: string) => {
     const prev = get().sessions;
     const prevCurrent = get().currentSessionId;
     const prevMessages = get().messages;
-    // Capture previous UI input state so we can restore on rollback
     const prevInputCentered = useUIStore.getState().inputBarCentered;
-
-    // Optimistically remove session
     set((state) => ({
       sessions: state.sessions.filter((s) => s.id !== id),
       currentSessionId: state.currentSessionId === id ? null : state.currentSessionId,
       messages: state.currentSessionId === id ? [] : state.messages,
     }));
-
-    // If we removed the active session, center the input bar
     if (prevCurrent === id) {
       useUIStore.getState().centerInput();
     }
-
     try {
       await api.delete(`/api/sessions/${id}`);
     } catch {
@@ -1056,15 +910,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  /* -----------------------------
-     RESET TO DEFAULT VIEW
-     - Clear current session selection and messages
-     - Reset pending/awaiting flags
-  ----------------------------- */
   resetToDefault: () => {
     const { sessionLoadAbortController } = get();
     if (sessionLoadAbortController) sessionLoadAbortController.abort();
-
     set({
       currentSessionId: null,
       selectedProjectId: null,
@@ -1086,8 +934,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (abortController) {
       abortController.abort();
     }
-
-    // Also clear messages that are still temporary if they are empty
     set((state) => {
       const updatedMessages = state.messages.map((m, idx) => {
         if (idx === state.messages.length - 1 && m.role === 'assistant') {
@@ -1095,9 +941,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
         return m;
       });
-
       return {
-        // Keep empty messages if they were manually stopped so user can regenerate
         messages: updatedMessages.filter(m => (!m.id?.startsWith('temp_ai_') || m.content.trim() !== '') || m.wasManuallyStopped),
         awaitingSessionId: null,
         activeRequestId: null,
@@ -1116,11 +960,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }));
   },
 
-
   getLastActiveMessage: () => {
     const { messages, activeVersions } = get();
     if (!messages.length) return null;
-
     const childrenMap = new Map<string, Message[]>();
     const roots: Message[] = [];
 
@@ -1139,15 +981,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     while (currentSiblings.length > 0) {
       const activeId = activeVersions[parentIdKey];
-      let activeIndex = -1;
-
-      if (activeId) {
-        activeIndex = currentSiblings.findIndex(m => m.id === activeId);
-      }
-
-      if (activeIndex === -1) {
-        activeIndex = currentSiblings.length - 1;
-      }
+      let activeIndex = currentSiblings.findIndex(m => m.id === activeId);
+      if (activeIndex === -1) activeIndex = currentSiblings.length - 1;
 
       const activeMessage = currentSiblings[activeIndex];
       lastMsg = activeMessage;

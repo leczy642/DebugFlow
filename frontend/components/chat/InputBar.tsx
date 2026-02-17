@@ -92,33 +92,29 @@ export default function InputBar() {
     const handleSend = async () => {
         if (!text.trim() || isAwaitingResponse) return;
 
-        if (!currentSessionId) {
-            await startNewSession(selectedProjectId);
-            await new Promise((r) => setTimeout(r, 0));
-        }
+        const messageContent = text.trim();
 
+        // INSTANT UI FEEDBACK: Clear input and dock the bar immediately
+        setText("");
         if (inputBarCentered) {
             dockInput();
         }
 
-        setText("");
-
         // Intercept "continue" command
-        if (text.trim().toLowerCase() === "continue") {
+        if (messageContent.toLowerCase() === "continue") {
             const lastMessage = useChatStore.getState().getLastActiveMessage();
 
             if (lastMessage?.role === "assistant" && !lastMessage.content.startsWith("⚠️")) {
                 await sendMessage("continue", lastMessage.id, true, true);
                 return;
             } else if (lastMessage?.role === "user") {
-                // If the last message is a user message (e.g. AI was stopped before it started),
-                // "continue" should just trigger the AI to respond to that user message.
                 await sendMessage(lastMessage.content, lastMessage.id, true, false);
                 return;
             }
         }
 
-        await sendMessage(text);
+        // Send message with selectedProjectId (in case a new session needs to be created)
+        await sendMessage(messageContent, undefined, false, false, selectedProjectId);
     };
 
     const handleMoreOptions = (e: React.MouseEvent, sessionId: string) => {

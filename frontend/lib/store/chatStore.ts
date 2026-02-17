@@ -434,6 +434,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     let currentSessionId = get().currentSessionId;
 
     // --- 1. INSTANT SYNCHRONOUS UI UPDATE ---
+    // We add the user message and set isStreaming state IMMEDIATELY to provide 
+    // zero-latency feedback before any network calls start.
     const requestId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const controller = new AbortController();
     const tempUserMessageId = `temp_user_${Date.now()}`;
@@ -518,6 +520,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     try {
       // --- 2. BACKGROUND SESSION CREATION (If needed) ---
+      // If we don't have a session ID locally (e.g., first message in a new session),
+      // we create it in the background to avoid blocking the initial user experience.
       if (!currentSessionId) {
         set({ pendingSession: true });
         const session = await api.post("/api/sessions", { project_id: projectIdForNewSession });
@@ -642,13 +646,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               const data = JSON.parse(dataStr);
 
               if (data.status) {
-                if (data.status === "connecting" || data.status === "building_context") {
-                  set({ awaitingSessionId: null });
-                }
+                // UI Fluidity Fix: We NO LONGER clear awaitingSessionId on status pulses (connecting, building_context).
+                // This ensures the loader/skeleton stays active until the first real 'data.content' 
+                // chunk arrives, preventing the "empty screen jump".
                 continue;
               }
 
               if (data.userMessageId) {
+                // ID Synchronization: Link the temporary local ID to the permanent DB ID.
+                // This keeps the chat thread linear when the user ID transitions.
                 set((state) => ({
                   messages: state.messages.map((m) => {
                     if (m.id === tempUserMessageId) return { ...m, id: data.userMessageId };
@@ -670,6 +676,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               }
 
               if (data.messageId) {
+                // Assistant ID Synchronization: Replace temp AI ID with real ID immediately.
                 confirmedMessageId = data.messageId;
                 set((state) => ({
                   messages: state.messages.map((m) =>
@@ -694,6 +701,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                       parentId: assistantParentId
                     } : m
                   ),
+                  // Loader management: only clear the loading state once text starts appearing.
                   awaitingSessionId: null,
                 }));
               }

@@ -35,12 +35,15 @@ router.post("/", requireNotBlocked, async (req, res) => {
 
     /* -----------------------------
        1. IMMEDIATE HEADER & PULSE FLUSH
+       Provides instant feedback to the frontend ensuring the connection is alive
+       and moving through internal states (connecting -> context building -> streaming).
     ----------------------------- */
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.write(": keep-alive\n\n");
     res.write(`data: ${JSON.stringify({ status: "connecting" })}\n\n`);
+    res.flushHeaders(); // Ensure headers are sent immediately
 
     const sessionRes = await pool.query('SELECT title FROM sessions WHERE id = $1', [sessionId]);
     if (sessionRes.rowCount === 0) {
@@ -88,28 +91,38 @@ router.post("/", requireNotBlocked, async (req, res) => {
       assistantMessageId = await addMessage(sessionId, "assistant", "", pool, userMessageId);
     }
 
-    // Sync Assistant ID immediately
+    // Sync permanent IDs to the frontend early. This prevents "branching" issues where
+    // the frontend loses track of message parentage when temp IDs transition to UUIDs.
     res.write(`data: ${JSON.stringify({ messageId: assistantMessageId })}\n\n`);
 
     /* -----------------------------
-       3. SESSION TITLE GENERATION (Non-blocking)
+       3. SESSION TITLE GENERATION (Non-blocking / Parallel)
+       We summarize the user prompt in the background. By not 'awaiting' here,
+       we allow the main AI response stream to start much faster.
     ----------------------------- */
-    let generatedTitle = null;
     if (isFirstMessage || currentTitle === "New Debug Session") {
-      try {
-        generatedTitle = await generateSessionTitle(message);
-        await pool.query(
-          `UPDATE sessions SET title = $2, updated_at = NOW() WHERE id = $1`,
-          [sessionId, generatedTitle]
-        );
-        res.write(`data: ${JSON.stringify({ title: generatedTitle })}\n\n`);
-      } catch (err) {
-        logger.warn("Title generation failed", { error: err.message });
-      }
+      // Fire-and-forget background task
+      setImmediate(async () => {
+        try {
+          const generatedTitle = await generateSessionTitle(message);
+          await pool.query(
+            `UPDATE sessions SET title = $2, updated_at = NOW() WHERE id = $1`,
+            [sessionId, generatedTitle]
+          );
+          // Send the title over the existing SSE stream as soon as it's ready.
+          if (res.writable && !res.writableEnded) {
+            res.write(`data: ${JSON.stringify({ title: generatedTitle })}\n\n`);
+          }
+        } catch (err) {
+          logger.warn("Parallel title generation failed", { error: err.message });
+        }
+      });
     }
 
     /* -----------------------------
        4. HISTORY RECONSTRUCTION
+       Efficiently build thread context using parent links to ensure the LLM
+       understands the specific conversation branch being used.
     ----------------------------- */
     const history = [];
     const msgMap = new Map((sessionState?.messages || []).map((m) => [m.id, m]));
@@ -155,12 +168,14 @@ router.post("/", requireNotBlocked, async (req, res) => {
     res.on("close", cleanup);
 
     try {
+      // Initialize LLM stream
       const stream = await streamChatWithAI(history);
       for await (const chunk of stream) {
         if (isAborted) break;
         const content = chunk.choices[0]?.delta?.content || "";
         if (content) {
           fullAiReply += content;
+          // Stream content chunks to the frontend as they arrive from the AI.
           res.write(`data: ${JSON.stringify({ content })}\n\n`);
         }
       }

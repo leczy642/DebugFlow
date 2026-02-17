@@ -94,13 +94,14 @@ export default function InputBar() {
 
         const messageContent = text.trim();
 
-        // INSTANT UI FEEDBACK: Clear input and dock the bar immediately
+        // INSTANT UI FEEDBACK: We clear the input text and dock the bar immediately 
+        // to give the user zero-latency visual confirmation of their action.
         setText("");
         if (inputBarCentered) {
             dockInput();
         }
 
-        // Intercept "continue" command
+        // Intercept "continue" command for seamless message resumption
         if (messageContent.toLowerCase() === "continue") {
             const lastMessage = useChatStore.getState().getLastActiveMessage();
 

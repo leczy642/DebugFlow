@@ -42,16 +42,19 @@ router.post("/", requireNotBlocked, async (req, res) => {
     res.write(": keep-alive\n\n");
     res.write(`data: ${JSON.stringify({ status: "connecting" })}\n\n`);
 
-    const exists = await sessionExists(sessionId);
-    if (!exists) {
+    const sessionRes = await pool.query('SELECT title FROM sessions WHERE id = $1', [sessionId]);
+    if (sessionRes.rowCount === 0) {
       res.write(`data: ${JSON.stringify({ error: "Session not found" })}\n\n`);
       return res.end();
     }
 
-    /* -----------------------------
-       2. FAST MESSAGE PERSISTENCE
-    ----------------------------- */
+    const currentTitle = sessionRes.rows[0].title;
     const sessionState = await getSessionWithMessages(sessionId);
+    const isFirstMessage = (sessionState?.messages || []).length === 0;
+
+    /* -----------------------------
+       2. FAST MESSAGE PERSISTENCE (Dual-ID Sync)
+    ----------------------------- */
     let userMessageId;
     let assistantMessageId;
     let validatedParentId = parentId;
@@ -60,10 +63,6 @@ router.post("/", requireNotBlocked, async (req, res) => {
     if (parentId && !uuidRegex.test(parentId)) {
       validatedParentId = null;
     }
-
-    // Check if this is the first message to trigger title generation
-    const isFirstMessage = (sessionState?.messages || []).length === 0;
-    let generatedTitle = null;
 
     if (req.body.isContinuation) {
       const lastAssistantMsg = (sessionState?.messages || [])
@@ -79,37 +78,38 @@ router.post("/", requireNotBlocked, async (req, res) => {
       // Create USER message
       if (!skipUserMessage) {
         userMessageId = await addMessage(sessionId, "user", message, pool, validatedParentId);
+        // Sync User ID immediately
+        res.write(`data: ${JSON.stringify({ userMessageId })}\n\n`);
       } else {
         userMessageId = validatedParentId;
-      }
-
-      // Generate title for the first real user message
-      if (isFirstMessage && !skipUserMessage) {
-        try {
-          generatedTitle = await generateSessionTitle(message);
-          await pool.query(
-            `UPDATE sessions SET title = $2, updated_at = NOW() WHERE id = $1`,
-            [sessionId, generatedTitle]
-          );
-        } catch (err) {
-          logger.warn("Title generation failed", { error: err.message });
-        }
       }
 
       // Create ASSISTANT message (Correct Branching: linked to User)
       assistantMessageId = await addMessage(sessionId, "assistant", "", pool, userMessageId);
     }
 
-    // STREAM THE ID IMMEDIATELY (Reduces vanishing message risk)
+    // Sync Assistant ID immediately
     res.write(`data: ${JSON.stringify({ messageId: assistantMessageId })}\n\n`);
 
-    // Stream the title if generated
-    if (generatedTitle) {
-      res.write(`data: ${JSON.stringify({ title: generatedTitle })}\n\n`);
+    /* -----------------------------
+       3. SESSION TITLE GENERATION (Non-blocking)
+    ----------------------------- */
+    let generatedTitle = null;
+    if (isFirstMessage || currentTitle === "New Debug Session") {
+      try {
+        generatedTitle = await generateSessionTitle(message);
+        await pool.query(
+          `UPDATE sessions SET title = $2, updated_at = NOW() WHERE id = $1`,
+          [sessionId, generatedTitle]
+        );
+        res.write(`data: ${JSON.stringify({ title: generatedTitle })}\n\n`);
+      } catch (err) {
+        logger.warn("Title generation failed", { error: err.message });
+      }
     }
 
     /* -----------------------------
-       3. HISTORY RECONSTRUCTION (Linear)
+       4. HISTORY RECONSTRUCTION
     ----------------------------- */
     const history = [];
     const msgMap = new Map((sessionState?.messages || []).map((m) => [m.id, m]));
@@ -135,7 +135,7 @@ router.post("/", requireNotBlocked, async (req, res) => {
     }
 
     /* -----------------------------
-       4. CONTEXT BUILDING (Non-blocking status)
+       5. CONTEXT & STREAMING
     ----------------------------- */
     res.write(`data: ${JSON.stringify({ status: "building_context" })}\n\n`);
     const sessionInfo = await getSessionInfo(sessionId);
@@ -148,9 +148,6 @@ router.post("/", requireNotBlocked, async (req, res) => {
       }
     }
 
-    /* -----------------------------
-       5. STREAMING LLM RESPONSE
-    ----------------------------- */
     let fullAiReply = "";
     let isAborted = false;
     const cleanup = () => { isAborted = true; };

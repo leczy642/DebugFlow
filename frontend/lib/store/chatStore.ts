@@ -687,6 +687,28 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             try {
               const data = JSON.parse(dataStr);
 
+              // Handle status updates for Ultra-Fast Start
+              if (data.status) {
+                console.info("[Chat Status]", data.status);
+                if (data.status === "connecting" || data.status === "building_context") {
+                  set({ awaitingSessionId: null });
+                }
+                continue;
+              }
+
+              if (data.userMessageId) {
+                // IMPORTANT: Replace temp user message ID and update AI parent linkage
+                set((state) => ({
+                  messages: state.messages.map((m) => {
+                    if (m.id === tempUserMessageId) return { ...m, id: data.userMessageId };
+                    if (m.parentId === tempUserMessageId) return { ...m, parentId: data.userMessageId };
+                    return m;
+                  })
+                }));
+                // Update assistantParentId local ref so it matches the new ID
+                assistantParentId = data.userMessageId;
+              }
+
               if (data.title) {
                 // Handle title update
                 set((state) => {

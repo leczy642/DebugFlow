@@ -156,6 +156,7 @@ router.post("/", requireNotBlocked, async (req, res) => {
       try {
         const contextMessages = await buildContextMessages(sessionInfo.project_id, sessionId, message, firebaseUid);
         history.unshift(...contextMessages);
+        logger.info(`Context built for session ${sessionId}: ${contextMessages.length} system messages added.`);
       } catch (err) {
         logger.warn("Context building failed", { error: err.message });
       }

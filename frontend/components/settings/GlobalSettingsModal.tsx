@@ -432,19 +432,17 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
                                                                 <h4 className="text-sm font-medium text-gray-500 mb-2">Active Memory Ledger</h4>
                                                                 <ul className="divide-y divide-gray-100 rounded-md border border-gray-200 bg-white">
                                                                     {activeMemories.map(memory => (
-                                                                        <li key={memory.id} className="flex items-center justify-between gap-x-6 py-3 px-4">
-                                                                            <div className="min-w-0">
-                                                                                <div className="flex items-start gap-x-3">
-                                                                                    <p className="text-sm font-semibold leading-6 text-gray-900">{memory.content}</p>
-                                                                                    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${memory.type === 'EXPLICIT' ? 'bg-purple-50 text-purple-700 ring-purple-600/20' :
-                                                                                        memory.type === 'PERSONAL_INFO' ? 'bg-blue-50 text-blue-700 ring-blue-600/20' :
-                                                                                            'bg-green-50 text-green-700 ring-green-600/20'
-                                                                                        }`}>
-                                                                                        {memory.type}
-                                                                                    </span>
-                                                                                </div>
+                                                                        <li key={memory.id} className="flex items-center justify-between gap-x-4 py-3 px-4">
+                                                                            <div className="min-w-0 flex-1">
+                                                                                <p className="text-sm font-semibold leading-6 text-gray-900">{memory.content}</p>
                                                                             </div>
                                                                             <div className="flex flex-none items-center gap-x-4">
+                                                                                <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ring-1 ring-inset ${memory.type === 'EXPLICIT' ? 'bg-purple-50 text-purple-700 ring-purple-600/20' :
+                                                                                    memory.type === 'PERSONAL_INFO' ? 'bg-blue-50 text-blue-700 ring-blue-600/20' :
+                                                                                        'bg-green-50 text-green-700 ring-green-600/20'
+                                                                                    }`}>
+                                                                                    {memory.type}
+                                                                                </span>
                                                                                 <button
                                                                                     onClick={() => archiveMemory(memory.id)}
                                                                                     className="hidden rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:block"

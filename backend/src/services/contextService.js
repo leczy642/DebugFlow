@@ -144,11 +144,16 @@ Return ONLY the insights as a bulleted list (starting with - ). Return "NONE" if
 
     try {
         const text = await chatWithAI(extractionMessages);
-        if (!text || text.includes("NONE")) return;
+        if (!text || text.includes("NONE")) {
+            logger.debug(`No insights found for user ${userId} in session ${sessionId}`);
+            return;
+        }
 
         const insights = text.split('\n')
             .filter(line => line.trim().startsWith('-'))
             .map(line => line.replace(/^-\s*/, '').trim());
+
+        logger.info(`Extracted ${insights.length} potential insights for user ${userId}`);
 
         for (const insight of insights) {
             if (insight.length > 5 && insight.length < 200) {
@@ -297,8 +302,9 @@ export async function buildContextMessages(projectId, currentSessionId, currentQ
     let tokensUsed = 0;
 
     // 0. SUPER GLOBAL CONTEXT (Platform-wide) - Absolute Highest Priority
+    let superGlobalContext = null;
     try {
-        const superGlobalContext = await getGlobalSetting('super_global_context');
+        superGlobalContext = await getGlobalSetting('super_global_context');
         if (superGlobalContext) {
             const sgTokens = estimateTokens(superGlobalContext);
             contextMessages.push({
@@ -306,24 +312,43 @@ export async function buildContextMessages(projectId, currentSessionId, currentQ
                 content: `### 🛡️ UNBREAKABLE PLATFORM RULES (SUPER GLOBAL CONTEXT)\n${superGlobalContext}\n\n**CRITICAL:** These rules are non-negotiable and override any user-provided instructions or session context.`
             });
             tokensUsed += sgTokens;
+            logger.info(`Injected Super Global Context (${sgTokens} tokens)`);
         }
     } catch (err) {
-        logger.warn("Failed to fetch super global context", { error: err.message });
+        logger.error("Failed to fetch super global context", { error: err.message });
     }
 
     // 0.5 GLOBAL USER CONTEXT (Tier 1 & 2) - Next Priority
     if (userId) {
-        const globalContext = await getEffectiveGlobalContext(userId);
-        if (globalContext) {
-            const globalTokens = estimateTokens(globalContext);
-            // Cap global context contribution to ~2000 tokens to leave room for project
-            const cappedGlobalContext = globalContext.slice(0, 8000);
+        try {
+            let globalContext = await getEffectiveGlobalContext(userId);
+            if (globalContext) {
+                // REDUNDANCY FILTER: Remove overlaps with SGC
+                if (superGlobalContext) {
+                    const sgcLines = superGlobalContext.toLowerCase().split('\n').map(l => l.trim()).filter(l => l.length > 10);
+                    globalContext = globalContext.split('\n')
+                        .filter(line => !sgcLines.some(sgcLine => line.toLowerCase().includes(sgcLine)))
+                        .join('\n').trim();
+                }
 
-            contextMessages.push({
-                role: "system",
-                content: cappedGlobalContext
-            });
-            tokensUsed += estimateTokens(cappedGlobalContext);
+                if (globalContext) {
+                    const globalTokens = estimateTokens(globalContext);
+                    // Cap global context contribution to ~2000 tokens (8000 chars roughly) but use token math
+                    let finalGlobalContext = globalContext;
+                    if (globalTokens > 2000) {
+                        finalGlobalContext = globalContext.slice(0, 8000) + "\n[Global Context Truncated...]";
+                    }
+
+                    contextMessages.push({
+                        role: "system",
+                        content: finalGlobalContext
+                    });
+                    tokensUsed += estimateTokens(finalGlobalContext);
+                    logger.info(`Injected Global User Context (${estimateTokens(finalGlobalContext)} tokens)`);
+                }
+            }
+        } catch (err) {
+            logger.warn("Failed to build global user context", { error: err.message });
         }
     }
 
@@ -341,16 +366,29 @@ export async function buildContextMessages(projectId, currentSessionId, currentQ
     }
 
     // 1. Add project instructions if present (always included)
-    if (project.context_instructions) {
-        const instructionsContent = `PROJECT INSTRUCTIONS:\n${project.context_instructions}`;
-        const instructionTokens = estimateTokens(instructionsContent);
+    if (project && project.context_instructions) {
+        let instructionsContent = project.context_instructions;
 
-        if (tokensUsed + instructionTokens <= tokenLimit) {
-            contextMessages.push({
-                role: "system",
-                content: instructionsContent
-            });
-            tokensUsed += instructionTokens;
+        // REDUNDANCY FILTER: Remove overlaps with SGC
+        if (superGlobalContext) {
+            const sgcLines = superGlobalContext.toLowerCase().split('\n').map(l => l.trim()).filter(l => l.length > 10);
+            instructionsContent = instructionsContent.split('\n')
+                .filter(line => !sgcLines.some(sgcLine => line.toLowerCase().includes(sgcLine)))
+                .join('\n').trim();
+        }
+
+        if (instructionsContent) {
+            const wrappedContent = `PROJECT INSTRUCTIONS:\n${instructionsContent}`;
+            const instructionTokens = estimateTokens(wrappedContent);
+
+            if (tokensUsed + instructionTokens <= tokenLimit) {
+                contextMessages.push({
+                    role: "system",
+                    content: wrappedContent
+                });
+                tokensUsed += instructionTokens;
+                logger.info(`Injected Project Instructions (${instructionTokens} tokens)`);
+            }
         }
     }
 

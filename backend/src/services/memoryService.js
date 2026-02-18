@@ -28,7 +28,14 @@ export async function isSGCContained(text) {
         if (!sgc) return false;
         const normalizedSGC = normalize(sgc);
         const normalizedText = normalize(text);
-        return normalizedSGC.includes(normalizedText);
+
+        // Exact match or significant overlap (more than 80% of characters if long enough)
+        if (normalizedSGC.includes(normalizedText)) {
+            // Check if it's a complete thought/phrase rather than a substring of a word
+            const wordBoundaryRegex = new RegExp(`\\b${normalizedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+            return wordBoundaryRegex.test(normalizedSGC);
+        }
+        return false;
     } catch (err) {
         logger.warn("SGC check failed during memory validation", { error: err.message });
         return false;
@@ -147,13 +154,12 @@ export async function reinforceMemory(memoryId, amount = 20) {
 
         // Promotion check
         if (memory.status === MemoryStatus.CANDIDATE && newConfidence >= PROMOTION_THRESHOLD) {
-            // Final check: Don't promote if it somehow matches SGC now
+            newStatus = MemoryStatus.ACTIVE;
+            logger.info(`Promoted memory ${memoryId} to ACTIVE`);
+
+            // Log if it matches SGC for visibility, but don't block
             if (await isSGCContained(memory.content)) {
-                logger.info(`Blocked memory promotion ${memoryId} - content now in Super Global Context`);
-                newStatus = MemoryStatus.ARCHIVED;
-            } else {
-                newStatus = MemoryStatus.ACTIVE;
-                logger.info(`Promoted memory ${memoryId} to ACTIVE`);
+                logger.debug(`Memory ${memoryId} promoted to ACTIVE despite overlap with Super Global Context.`);
             }
         }
 

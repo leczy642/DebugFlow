@@ -36,6 +36,7 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
     const [confirmDeleteHistory, setConfirmDeleteHistory] = useState(false);
     const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const { user } = useAuth();
     const router = useRouter();
 
@@ -94,6 +95,12 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
         setSaveStatus('saving');
         try {
             const added = await api.post('/api/user/memories', { content: newMemory });
+            if (added.status === 'LIMIT_EXCEEDED') {
+                setError("Max 20 items, you need to delete to add new items once limits have been attained");
+                setSaveStatus('error');
+                setTimeout(() => { setError(null); setSaveStatus('idle'); }, 5000);
+                return;
+            }
             setMemories([added, ...memories]);
             setNewMemory('');
             setSaveStatus('success');
@@ -117,6 +124,11 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
     const promoteMemory = async (id: string) => {
         try {
             const updated = await api.patch(`/api/user/memories/${id}/promote`, {});
+            if (updated.status === 'LIMIT_EXCEEDED') {
+                setError("Max 20 items, you need to delete to add new items once limits have been attained");
+                setTimeout(() => setError(null), 5000);
+                return;
+            }
             setMemories(memories.map(m => m.id === id ? updated : m));
         } catch (err) {
             console.error(err);
@@ -401,6 +413,7 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
                                                                         </div>
                                                                         <div className="ml-3">
                                                                             <h3 className="text-sm font-medium text-orange-800">Use Suggestions</h3>
+                                                                            <p className="text-xs text-orange-600 mb-2">Max 12 items, the 13th removes the first from the list</p>
                                                                             <div className="mt-2 space-y-2">
                                                                                 {candidateMemories.map(memory => (
                                                                                     <div key={memory.id} className="flex items-center justify-between text-sm">
@@ -429,7 +442,20 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
 
                                                             {/* Active Memories */}
                                                             <div>
-                                                                <h4 className="text-sm font-medium text-gray-500 mb-2">Active Memory Ledger</h4>
+                                                                <div className="flex items-center justify-between mb-2">
+                                                                    <div>
+                                                                        <h4 className="text-sm font-medium text-gray-900">Active Memory Ledger</h4>
+                                                                        <p className="text-xs text-gray-500">Max 20 items, you need to delete to add new items once limits have been attained</p>
+                                                                    </div>
+                                                                </div>
+                                                                {error && (
+                                                                    <div className="mb-4 rounded-md bg-red-50 p-3 border border-red-200">
+                                                                        <p className="text-sm text-red-600 flex items-center">
+                                                                            <ExclamationTriangleIcon className="h-4 w-4 mr-2" />
+                                                                            {error}
+                                                                        </p>
+                                                                    </div>
+                                                                )}
                                                                 <ul className="divide-y divide-gray-100 rounded-md border border-gray-200 bg-white">
                                                                     {activeMemories.map(memory => (
                                                                         <li key={memory.id} className="flex items-center justify-between gap-x-4 py-3 px-4">

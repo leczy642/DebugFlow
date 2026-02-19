@@ -72,6 +72,17 @@ export async function addExplicitMemory(userId, text, type = MemoryType.EXPLICIT
             return { id: null, content: text, status: 'BLOCKED_BY_SGC' };
         }
 
+        // Limit check: Max 20 active memories
+        const { rows: [{ count }] } = await pool.query(
+            `SELECT COUNT(*) FROM user_context WHERE user_id = $1 AND status = $2`,
+            [userId, MemoryStatus.ACTIVE]
+        );
+
+        if (parseInt(count, 10) >= 20) {
+            logger.info(`Blocked explicit memory for user ${userId} - reached ledger cap of 20`);
+            return { id: null, status: 'LIMIT_EXCEEDED' };
+        }
+
         const { rows } = await pool.query(
             `INSERT INTO user_context 
              (user_id, content, type, status, confidence, last_used_at)
@@ -102,7 +113,7 @@ export async function proposeCandidate(userId, text, metadata = {}) {
 
     // Check for similar existing memories (Active or Candidate)
     const { rows: existing } = await pool.query(
-        `SELECT id, content, confidence, status FROM user_context 
+        `SELECT id, content, confidence, status, created_at FROM user_context 
          WHERE user_id = $1 AND status != $2`,
         [userId, MemoryStatus.ARCHIVED]
     );
@@ -117,6 +128,16 @@ export async function proposeCandidate(userId, text, metadata = {}) {
     if (similar) {
         logger.info(`Reinforcing similar memory for user ${userId}: "${similar.content}" vs new "${text}"`);
         return reinforceMemory(similar.id);
+    }
+
+    // FIFO Logic: Suggestions Cap at 12
+    const candidates = existing.filter(m => m.status === MemoryStatus.CANDIDATE)
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    if (candidates.length >= 12) {
+        const oldest = candidates[0];
+        logger.info(`Suggestion limit reached (12). Removing oldest candidate: ${oldest.id}`);
+        await archiveMemory(oldest.id);
     }
 
     try {
@@ -154,6 +175,17 @@ export async function reinforceMemory(memoryId, amount = 20) {
 
         // Promotion check
         if (memory.status === MemoryStatus.CANDIDATE && newConfidence >= PROMOTION_THRESHOLD) {
+            // Check ledger limit before promoting
+            const { rows: [{ count }] } = await pool.query(
+                `SELECT COUNT(*) FROM user_context WHERE user_id = (SELECT user_id FROM user_context WHERE id = $1) AND status = $2`,
+                [memoryId, MemoryStatus.ACTIVE]
+            );
+
+            if (parseInt(count, 10) >= 20) {
+                logger.info(`Blocked promotion for memory ${memoryId} - ledger cap of 20 reached`);
+                return { id: memoryId, status: 'LIMIT_EXCEEDED' };
+            }
+
             newStatus = MemoryStatus.ACTIVE;
             logger.info(`Promoted memory ${memoryId} to ACTIVE`);
 
@@ -212,7 +244,8 @@ export async function getEffectiveGlobalContext(userId) {
         const { rows: memories } = await pool.query(
             `SELECT content, type FROM user_context 
              WHERE user_id = $1 AND status = 'ACTIVE' 
-             ORDER BY confidence DESC, created_at DESC`,
+             ORDER BY confidence DESC, created_at DESC 
+             LIMIT 20`,
             [userId]
         );
 

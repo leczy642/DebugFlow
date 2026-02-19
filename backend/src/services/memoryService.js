@@ -76,7 +76,7 @@ export async function addExplicitMemory(userId, text, type = MemoryType.EXPLICIT
             `INSERT INTO user_context 
              (user_id, content, type, status, confidence, last_used_at)
              VALUES ($1, $2, $3, $4, $5, NOW())
-             RETURNING id, content, status`,
+             RETURNING id, content, type, status, confidence, created_at`,
             [userId, text, type, MemoryStatus.ACTIVE, EXPLICIT_CMD_SCORE]
         );
         logger.info(`Added explicit memory for user ${userId}`);
@@ -124,7 +124,7 @@ export async function proposeCandidate(userId, text, metadata = {}) {
             `INSERT INTO user_context 
              (user_id, content, type, status, confidence, metadata, last_used_at)
              VALUES ($1, $2, $3, $4, $5, $6, NOW())
-             RETURNING id, content, status, confidence`,
+             RETURNING id, content, type, status, confidence, created_at`,
             [userId, text, MemoryType.INFERRED, MemoryStatus.CANDIDATE, INFERENCE_START_SCORE, metadata]
         );
         logger.info(`Proposed new candidate memory for user ${userId}: ${text}`);
@@ -167,7 +167,7 @@ export async function reinforceMemory(memoryId, amount = 20) {
             `UPDATE user_context 
              SET confidence = $1, status = $2, last_used_at = NOW(), updated_at = NOW()
              WHERE id = $3
-             RETURNING id, content, status, confidence`,
+             RETURNING id, content, type, status, confidence, created_at`,
             [newConfidence, newStatus, memoryId]
         );
 

@@ -514,8 +514,8 @@ export async function sessionNeedsSummary(sessionId) {
     const hasSummary = !!result.context_summary;
 
     // Generate summary if:
-    // - 5+ messages AND no summary
-    if (messageCount >= 5 && !hasSummary) {
+    // - 4+ messages AND no summary
+    if (messageCount >= 4 && !hasSummary) {
         return true;
     }
 
@@ -558,9 +558,8 @@ export async function deleteSummaryEmbedding(sessionId) {
  */
 export async function deleteUserEmbeddings(userId) {
     try {
-        const index = getPineconeIndex();
         // Delete all vectors in the context namespace for this user
-        await index.namespace(CONTEXT_NAMESPACE).deleteMany({
+        await ragService.index.namespace(CONTEXT_NAMESPACE).deleteMany({
             filter: { userId: { $eq: userId } }
         });
         logger.info(`Deleted all embeddings for user ${userId}`);

@@ -9,9 +9,9 @@ import { v4 as uuid } from "uuid";
 export async function createProject(userId, name) {
     const id = uuid();
     const { rows } = await pool.query(
-        `INSERT INTO projects (id, user_id, name)
-     VALUES ($1, $2, $3)
-     RETURNING id, name, created_at, updated_at`,
+        `INSERT INTO projects (id, user_id, name, context_enabled)
+      VALUES ($1, $2, $3, TRUE)
+      RETURNING id, name, created_at, updated_at, context_enabled`,
         [id, userId, name]
     );
     return rows[0];

@@ -5,11 +5,12 @@ import { pool } from "../postgres_connect.js";
 ----------------------------- */
 
 /**
- * Ensures the users table exists.
+ * Ensures all database tables and columns exist.
  */
 export async function ensureUsersTableExists() {
     console.log("🚀 Starting database initialization...");
     try {
+        // 1. Users Table
         await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id VARCHAR(255) PRIMARY KEY, -- Firebase UID
@@ -37,6 +38,7 @@ export async function ensureUsersTableExists() {
 
         // Migration: check for new columns and add them if missing
         const alterQueries = [
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS global_instructions TEXT DEFAULT NULL`,
             `ALTER TABLE users ADD COLUMN IF NOT EXISTS tier VARCHAR(20) DEFAULT 'free'`,
             `ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_requests_count INTEGER DEFAULT 0`,
             `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_request_at TIMESTAMP`,
@@ -47,7 +49,7 @@ export async function ensureUsersTableExists() {
             await pool.query(query);
         }
 
-        // Create audit_logs table
+        // 2. Audit Logs
         await pool.query(`
           CREATE TABLE IF NOT EXISTS audit_logs (
             id SERIAL PRIMARY KEY,
@@ -59,7 +61,7 @@ export async function ensureUsersTableExists() {
           );
         `);
 
-        // Create global_settings table
+        // 3. Global Settings
         await pool.query(`
           CREATE TABLE IF NOT EXISTS global_settings (
             key VARCHAR(100) PRIMARY KEY,
@@ -68,21 +70,48 @@ export async function ensureUsersTableExists() {
           );
         `);
 
-        // Migration: Check if full_name exists and rename it to name
+        // 4. User Context (Memory Ledger)
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS user_context (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            content TEXT NOT NULL,
+            type TEXT NOT NULL CHECK (type IN ('EXPLICIT', 'INFERRED', 'PERSONAL_INFO', 'CANDIDATE')),
+            status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'CANDIDATE', 'ARCHIVED')),
+            confidence INTEGER NOT NULL DEFAULT 0,
+            last_used_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            metadata JSONB DEFAULT '{}',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          );
+        `);
+
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_user_context_user_id ON user_context(user_id)`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_user_context_status ON user_context(status)`);
+
+        // 5. Project & Session migrations (Folder Context)
+        console.log("Checking projects and sessions for context columns...");
+        await pool.query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS context_instructions TEXT`);
+        await pool.query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS context_enabled BOOLEAN DEFAULT TRUE`);
+        await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES projects(id)`);
+        await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS context_summary TEXT`);
+        await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_updated_at TIMESTAMP`);
+
+        // Name migration
         try {
             await pool.query(`
-        DO $$
-        BEGIN
-          IF EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='full_name') THEN
-            ALTER TABLE users RENAME COLUMN full_name TO name;
-          END IF;
-        END $$;
-      `);
+                DO $$
+                BEGIN
+                  IF EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='full_name') THEN
+                    ALTER TABLE users RENAME COLUMN full_name TO name;
+                  END IF;
+                END $$;
+            `);
         } catch (e) {
             console.warn("Migration check for full_name -> name failed (might be benign):", e.message);
         }
 
-        console.log("✅ Verified 'users' table exists and has correct columns.");
+        console.log("✅ Verified all database tables and columns exist.");
     } catch (err) {
         console.error("❌ Failed to ensure database tables:", err);
     }

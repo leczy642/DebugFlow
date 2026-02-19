@@ -50,36 +50,139 @@ type Props = {
     isStreaming?: boolean;
 };
 
-export default function StreamingMarkdown({ content, isStreaming = false }: Props) {
-    // Process content to handle streaming edge cases
-    const processedContent = useMemo(() => {
-        if (!isStreaming) return content;
-
-        // During streaming, check for incomplete code fences
-        // Unclosed code blocks can break markdown parsing, so we temporarily close them
-        const codeBlockRegex = /```/g;
-        const matches = content.match(codeBlockRegex);
-        const count = matches ? matches.length : 0;
-
-        // If odd number of ```, the last code block is incomplete
-        // Add a closing fence to prevent parsing errors
-        if (count % 2 !== 0) {
-            return content + "\n```";
-        }
-
-        return content;
-    }, [content, isStreaming]);
-
-    // State for copy feedback (currently shared across all code blocks in this component)
-    // Note: This creates shared state - all code blocks show "Copied" when any is copied
+function CodeBlock({ language, codeString }: { language: string; codeString: string }) {
     const [copied, setCopied] = useState(false);
 
-    // Handle copying code to clipboard
-    const handleCopy = (codeSnippet: string) => {
-        navigator.clipboard.writeText(codeSnippet);
+    const handleCopy = () => {
+        navigator.clipboard.writeText(codeString);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
+
+    return (
+        <div className="code-block-wrapper">
+            <div className="code-block-header">
+                <span className="code-block-language">{language}</span>
+                <button
+                    className="code-block-copy"
+                    onClick={handleCopy}
+                    title="Copy code"
+                >
+                    {copied ? (
+                        <span className="flex items-center gap-1">
+                            <span className="text-green-600 font-bold">✓</span>
+                            Copied
+                        </span>
+                    ) : 'Copy'}
+                </button>
+            </div>
+            <SyntaxHighlighter
+                style={oneLight}
+                language={language}
+                PreTag="div"
+                customStyle={{
+                    margin: 0,
+                    borderRadius: "0 0 8px 8px",
+                    fontSize: "13px",
+                    lineHeight: "1.5",
+                }}
+            >
+                {codeString}
+            </SyntaxHighlighter>
+        </div>
+    );
+}
+
+export default function StreamingMarkdown({ content, isStreaming = false }: Props) {
+    // Process content to handle streaming edge cases
+    const processedContent = useMemo(() => {
+        // Stage 1: Streaming Safety (Ensure unclosed fences are handled)
+        let workingContent = content;
+        if (isStreaming) {
+            const lines = content.split('\n');
+            let openFence: string | null = null;
+            for (const line of lines) {
+                const match = line.match(/^(?: {0,3})(`{3,}|~{3,})/);
+                if (match) {
+                    const fence = match[1];
+                    if (openFence) {
+                        if (fence[0] === openFence[0] && fence.length >= openFence.length) openFence = null;
+                    } else {
+                        openFence = fence;
+                    }
+                }
+            }
+            if (openFence) {
+                workingContent = content + (content.endsWith('\n') ? '' : '\n') + openFence;
+            }
+        }
+
+        // Stage 2: Fragment & Block Merging (Consolidate adjacent blocks/fragments)
+        const lines = workingContent.split('\n');
+        const processedLines: string[] = [];
+
+        // Match fragment line: ```content```
+        const isFragment = (l: string) => {
+            const m = l.trim().match(/^(`{3,})(.*)(\1)$/);
+            return m ? m[2] : null;
+        };
+        // Match standard fence: ```language
+        const getFence = (l: string) => {
+            const m = l.match(/^( {0,3})(`{3,}|~{3,})([a-zA-Z0-9-]*)\s*$/);
+            return m ? { indent: m[1], fence: m[2], lang: m[3] } : null;
+        };
+
+        let currentOpenFence: string | null = null;
+        let blockBuffer: string[] = [];
+        let whitespaceBuffer: string[] = [];
+        let activeLanguage: string = "text";
+
+        for (const line of lines) {
+            const fragContent = isFragment(line);
+            const fence = getFence(line);
+
+            if (currentOpenFence) {
+                // Inside standard block: looking for closer
+                if (line.trim().startsWith(currentOpenFence)) {
+                    currentOpenFence = null;
+                } else {
+                    blockBuffer.push(line);
+                }
+            } else if (fragContent !== null) {
+                // Fragment found: buffer it (and any intermediate whitespace)
+                blockBuffer.push(...whitespaceBuffer, fragContent);
+                whitespaceBuffer = [];
+            } else if (fence) {
+                // Standard block start: enter buffer mode
+                currentOpenFence = fence.fence;
+                // If this is the first block in the buffer, capture its language
+                if (blockBuffer.length === 0 && fence.lang) {
+                    activeLanguage = fence.lang;
+                }
+                blockBuffer.push(...whitespaceBuffer);
+                whitespaceBuffer = [];
+            } else if (line.trim() === "") {
+                whitespaceBuffer.push(line);
+            } else {
+                // Actual text: Break the merging chain and flush buffer
+                if (blockBuffer.length > 0) {
+                    processedLines.push('```' + activeLanguage, ...blockBuffer, '```');
+                    blockBuffer = [];
+                    activeLanguage = "text";
+                }
+                processedLines.push(...whitespaceBuffer, line);
+                whitespaceBuffer = [];
+            }
+        }
+
+        // Final flush
+        if (blockBuffer.length > 0) {
+            processedLines.push('```' + activeLanguage, ...blockBuffer, '```');
+        }
+        processedLines.push(...whitespaceBuffer);
+
+        return processedLines.join('\n');
+    }, [content, isStreaming]);
 
     return (
         <div className="streaming-markdown">
@@ -105,42 +208,14 @@ export default function StreamingMarkdown({ content, isStreaming = false }: Prop
 
                         // Fenced code block with syntax highlighting
                         const language = match ? match[1] : "text";
-                        const codeString = String(children).replace(/\n$/, "");
 
-                        return (
-                            <div className="code-block-wrapper">
-                                {/* Code block header with language label and copy button */}
-                                <div className="code-block-header">
-                                    <span className="code-block-language">{language}</span>
-                                    <button
-                                        className="code-block-copy"
-                                        onClick={() => handleCopy(codeString)}
-                                        title="Copy code"
-                                    >
-                                        {copied ? (
-                                            <span className="flex items-center gap-1">
-                                                <span className="text-green-600 font-bold">✓</span>
-                                                Copied
-                                            </span>
-                                        ) : 'Copy'}
-                                    </button>
-                                </div>
-                                {/* Syntax-highlighted code content */}
-                                <SyntaxHighlighter
-                                    style={oneLight} // Light theme syntax highlighting
-                                    language={language}
-                                    PreTag="div"
-                                    customStyle={{
-                                        margin: 0,
-                                        borderRadius: "0 0 8px 8px",
-                                        fontSize: "13px",
-                                        lineHeight: "1.5",
-                                    }}
-                                >
-                                    {codeString}
-                                </SyntaxHighlighter>
-                            </div>
-                        );
+                        // Fix for streaming commas: join array children without separators
+                        // react-markdown sometimes sends children as an array of text chunks
+                        const codeString = Array.isArray(children)
+                            ? children.join("").replace(/\n$/, "")
+                            : String(children).replace(/\n$/, "");
+
+                        return <CodeBlock language={language} codeString={codeString} />;
                     },
                     // Paragraph styling
                     p({ children }) {

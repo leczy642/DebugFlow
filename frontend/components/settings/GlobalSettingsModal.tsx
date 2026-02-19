@@ -43,10 +43,6 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
     // Reset tab when modal opens
     useEffect(() => {
         if (isOpen) {
-            // If view is memory, we use tab 0 (Instructions) or 1 (Memory)
-            // But wait, the previous code had 3 tabs: Profile (0), Instructions (1), Memory (2)
-            // Now we want "Memory" view to have 2 tabs: Instructions and Memory.
-            // And "Profile" view to have NO tabs, just the content.
             setActiveTab(0);
             setConfirmDeleteHistory(false);
             setConfirmDeleteAccount(false);
@@ -105,10 +101,11 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
             setNewMemory('');
             setSaveStatus('success');
             setTimeout(() => setSaveStatus('idle'), 2000);
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
+            setError(err.message || "Failed to add memory");
             setSaveStatus('error');
-            setTimeout(() => setSaveStatus('idle'), 3000);
+            setTimeout(() => { setError(null); setSaveStatus('idle'); }, 5000);
         }
     };
 
@@ -130,8 +127,10 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
                 return;
             }
             setMemories(memories.map(m => m.id === id ? updated : m));
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
+            setError(err.message || "Failed to promote memory");
+            setTimeout(() => setError(null), 5000);
         }
     };
 
@@ -140,7 +139,6 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
         try {
             await api.delete('/api/user/history');
             onClose();
-            // Refresh page or clear local state
             window.location.reload();
         } catch (err) {
             console.error(err);
@@ -153,7 +151,6 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
         setLoading(true);
         try {
             await api.delete('/api/user/account');
-            // Log out from Firebase and redirect
             await signOut(auth);
             Cookies.remove('debugflow_token');
             router.push('/login');
@@ -168,7 +165,6 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
     const activeMemories = memories.filter(m => m.status === 'ACTIVE');
     const candidateMemories = memories.filter(m => m.status === 'CANDIDATE');
 
-    // Helper for button classes based on status
     const getButtonClasses = () => {
         const base = "inline-flex justify-center rounded-md px-3 py-2 text-sm font-semibold shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2";
         switch (saveStatus) {
@@ -404,61 +400,74 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
                                                                 </button>
                                                             </div>
 
-                                                            {/* Candidate Memories */}
-                                                            {candidateMemories.length > 0 && (
-                                                                <div className="rounded-md bg-orange-50 p-4 border border-orange-200">
-                                                                    <div className="flex">
-                                                                        <div className="flex-shrink-0">
-                                                                            <SparklesIcon className="h-5 w-5 text-orange-400" aria-hidden="true" />
-                                                                        </div>
-                                                                        <div className="ml-3">
-                                                                            <h3 className="text-sm font-medium text-orange-800">Use Suggestions</h3>
-                                                                            <p className="text-xs text-orange-600 mb-2">Max 12 items, the 13th removes the first from the list</p>
-                                                                            <div className="mt-2 space-y-2">
-                                                                                {candidateMemories.map(memory => (
-                                                                                    <div key={memory.id} className="flex items-center justify-between text-sm">
-                                                                                        <p className="text-orange-700">{memory.content}</p>
-                                                                                        <div className="flex gap-2">
-                                                                                            <button
-                                                                                                onClick={() => promoteMemory(memory.id)}
-                                                                                                className="text-green-600 hover:text-green-800 font-medium"
-                                                                                            >
-                                                                                                Approve
-                                                                                            </button>
-                                                                                            <button
-                                                                                                onClick={() => archiveMemory(memory.id)}
-                                                                                                className="text-red-600 hover:text-red-800"
-                                                                                            >
-                                                                                                Reject
-                                                                                            </button>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                ))}
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
+                                                            {error && (
+                                                                <div className="rounded-md bg-red-50 p-3 border border-red-200">
+                                                                    <p className="text-sm text-red-600 flex items-center">
+                                                                        <ExclamationTriangleIcon className="h-4 w-4 mr-2" />
+                                                                        {error}
+                                                                    </p>
                                                                 </div>
                                                             )}
 
-                                                            {/* Active Memories */}
-                                                            <div>
-                                                                <div className="flex items-center justify-between mb-2">
-                                                                    <div>
-                                                                        <h4 className="text-sm font-medium text-gray-900">Active Memory Ledger</h4>
-                                                                        <p className="text-xs text-gray-500">Max 20 items, you need to delete to add new items once limits have been attained</p>
-                                                                    </div>
+                                                            {/* Candidate Memories */}
+                                                            <div className="space-y-3">
+                                                                <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                                                                    <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Memory Suggestions</h4>
+                                                                    <span className="inline-flex items-center rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700 ring-1 ring-inset ring-orange-700/10">
+                                                                        Max 12 Items (FIFO)
+                                                                    </span>
                                                                 </div>
-                                                                {error && (
-                                                                    <div className="mb-4 rounded-md bg-red-50 p-3 border border-red-200">
-                                                                        <p className="text-sm text-red-600 flex items-center">
-                                                                            <ExclamationTriangleIcon className="h-4 w-4 mr-2" />
-                                                                            {error}
-                                                                        </p>
+
+                                                                {candidateMemories.length > 0 ? (
+                                                                    <div className="rounded-md bg-orange-50 p-4 border border-orange-200">
+                                                                        <div className="flex">
+                                                                            <div className="flex-shrink-0">
+                                                                                <SparklesIcon className="h-5 w-5 text-orange-400" aria-hidden="true" />
+                                                                            </div>
+                                                                            <div className="ml-3 w-full">
+                                                                                <div className="space-y-2">
+                                                                                    {candidateMemories.map(memory => (
+                                                                                        <div key={memory.id} className="flex items-center justify-between text-sm">
+                                                                                            <p className="text-orange-700">{memory.content}</p>
+                                                                                            <div className="flex gap-2">
+                                                                                                <button
+                                                                                                    onClick={() => promoteMemory(memory.id)}
+                                                                                                    className="text-green-600 hover:text-green-800 font-medium"
+                                                                                                >
+                                                                                                    Approve
+                                                                                                </button>
+                                                                                                <button
+                                                                                                    onClick={() => archiveMemory(memory.id)}
+                                                                                                    className="text-red-600 hover:text-red-800"
+                                                                                                >
+                                                                                                    Reject
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="text-center py-4 bg-gray-50 rounded-md border border-dashed border-gray-200">
+                                                                        <p className="text-[11px] text-gray-400 italic">No suggestions available at the moment.</p>
                                                                     </div>
                                                                 )}
-                                                                <ul className="divide-y divide-gray-100 rounded-md border border-gray-200 bg-white">
+                                                            </div>
+
+                                                            {/* Active Memories */}
+                                                            <div className="space-y-3">
+                                                                <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                                                                    <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Active Memory Ledger</h4>
+                                                                    <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                                                                        Max 20 Items (Hard Cap)
+                                                                    </span>
+                                                                </div>
+
+                                                                <ul className="divide-y divide-gray-100 rounded-md border border-gray-200 bg-white shadow-sm overflow-hidden">
                                                                     {activeMemories.map(memory => (
-                                                                        <li key={memory.id} className="flex items-center justify-between gap-x-4 py-3 px-4">
+                                                                        <li key={memory.id} className="flex items-center justify-between gap-x-4 py-3 px-4 hover:bg-gray-50 transition-colors">
                                                                             <div className="min-w-0 flex-1">
                                                                                 <p className="text-sm font-semibold leading-6 text-gray-900">{memory.content}</p>
                                                                             </div>
@@ -471,7 +480,7 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
                                                                                 </span>
                                                                                 <button
                                                                                     onClick={() => archiveMemory(memory.id)}
-                                                                                    className="hidden rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:block"
+                                                                                    className="rounded-md bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
                                                                                 >
                                                                                     Forget
                                                                                 </button>
@@ -479,8 +488,9 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
                                                                         </li>
                                                                     ))}
                                                                     {activeMemories.length === 0 && (
-                                                                        <li className="py-4 text-center text-sm text-gray-500">
-                                                                            No active memories yet. Try telling the AI to "Remember this".
+                                                                        <li className="py-8 text-center bg-gray-50">
+                                                                            <p className="text-xs text-gray-500">No active memories yet.</p>
+                                                                            <p className="text-[11px] text-gray-400 italic mt-1">Try telling the AI to "Remember this".</p>
                                                                         </li>
                                                                     )}
                                                                 </ul>
@@ -500,4 +510,3 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
         </Transition.Root>
     );
 }
-

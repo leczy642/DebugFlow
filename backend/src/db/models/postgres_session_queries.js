@@ -233,7 +233,7 @@ export async function appendMessageContent(
 ) {
   await client.query(
     `UPDATE messages
-     SET content = content || $2
+     SET content = COALESCE(content, '') || $2
      WHERE id = $1`,
     [messageId, contentToAppend]
   );

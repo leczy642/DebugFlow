@@ -53,6 +53,7 @@ router.post("/", requireNotBlocked, async (req, res) => {
 
     const currentTitle = sessionRes.rows[0].title;
     const sessionState = await getSessionWithMessages(sessionId);
+    const msgMap = new Map((sessionState?.messages || []).map((m) => [m.id, m]));
     const isFirstMessage = (sessionState?.messages || []).length === 0;
 
     /* -----------------------------
@@ -126,11 +127,12 @@ router.post("/", requireNotBlocked, async (req, res) => {
        understands the specific conversation branch being used.
     ----------------------------- */
     const history = [];
-    const msgMap = new Map((sessionState?.messages || []).map((m) => [m.id, m]));
 
     let currentId = req.body.isContinuation ? assistantMessageId : (skipUserMessage ? userMessageId : validatedParentId);
     if (req.body.isContinuation) {
-      currentId = msgMap.get(assistantMessageId)?.parentId;
+      // For continuations, we want the thread context UP TO the assistant message.
+      const lastMsg = msgMap.get(assistantMessageId);
+      currentId = lastMsg?.parentId;
     }
 
     while (currentId) {
@@ -143,6 +145,10 @@ router.post("/", requireNotBlocked, async (req, res) => {
     }
 
     if (req.body.isContinuation) {
+      const lastMsg = msgMap.get(assistantMessageId);
+      if (lastMsg && lastMsg.role === 'assistant') {
+        history.push({ role: "assistant", content: lastMsg.content });
+      }
       history.push({ role: "user", content: "Continue your previous response seamlessly." });
     } else if (!skipUserMessage) {
       history.push({ role: "user", content: message });
@@ -182,18 +188,18 @@ router.post("/", requireNotBlocked, async (req, res) => {
         }
       }
 
-      if (!isAborted) {
-        if (fullAiReply) {
-          await appendMessageContent(assistantMessageId, fullAiReply, pool);
-          if (sessionInfo?.user_id) {
-            setImmediate(async () => {
-              try {
-                const needsSummary = await sessionNeedsSummary(sessionId);
-                if (needsSummary) await generateSessionSummary(sessionId);
-              } catch (e) { }
-            });
-          }
+      if (fullAiReply) {
+        await appendMessageContent(assistantMessageId, fullAiReply, pool);
+        if (!isAborted && sessionInfo?.user_id) {
+          setImmediate(async () => {
+            try {
+              const needsSummary = await sessionNeedsSummary(sessionId);
+              if (needsSummary) await generateSessionSummary(sessionId);
+            } catch (e) { }
+          });
         }
+      }
+      if (!isAborted) {
         res.write(`data: [DONE]\n\n`);
       }
       res.end();

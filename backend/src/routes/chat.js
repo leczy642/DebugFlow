@@ -75,8 +75,9 @@ router.post("/", requireNotBlocked, async (req, res) => {
         res.write(`data: ${JSON.stringify({ error: "No assistant message found to continue." })}\n\n`);
         return res.end();
       }
+      // REUSE the existing assistant message ID. We will append directly to it.
       assistantMessageId = lastAssistantMsg.id;
-      userMessageId = assistantMessageId;
+      userMessageId = msgMap.get(assistantMessageId)?.parentId || validatedParentId;
     } else {
       // Create USER message
       if (!skipUserMessage) {
@@ -89,11 +90,11 @@ router.post("/", requireNotBlocked, async (req, res) => {
 
       // Create ASSISTANT message (Correct Branching: linked to User)
       assistantMessageId = await addMessage(sessionId, "assistant", "", pool, userMessageId);
-    }
 
-    // Sync permanent IDs to the frontend early. This prevents "branching" issues where
-    // the frontend loses track of message parentage when temp IDs transition to UUIDs.
-    res.write(`data: ${JSON.stringify({ messageId: assistantMessageId })}\n\n`);
+      // Sync permanent IDs to the frontend early. This prevents "branching" issues where
+      // the frontend loses track of message parentage when temp IDs transition to UUIDs.
+      res.write(`data: ${JSON.stringify({ messageId: assistantMessageId })}\n\n`);
+    }
 
     /* -----------------------------
        3. SESSION TITLE GENERATION (Non-blocking / Parallel)

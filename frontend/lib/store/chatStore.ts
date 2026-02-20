@@ -518,6 +518,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return newSyncState;
     });
 
+    let assistantMessageId = "";
+    let accumulatedContent = "";
+    let confirmedMessageId: string | null = null;
+
     try {
       // --- 2. BACKGROUND SESSION CREATION (If needed) ---
       // If we don't have a session ID locally (e.g., first message in a new session),
@@ -583,9 +587,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let done = false;
-      let assistantMessageId = "";
-      let accumulatedContent = "";
-      let confirmedMessageId: string | null = null;
 
       set((state) => {
         if (state.activeRequestId !== requestId) return {};
@@ -783,8 +784,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') return;
-      get().receiveMessage("⚠️ Error processing request", requestId);
-      set({ isStreaming: false });
+      get().receiveMessage("⚠️ Error processing request. Connection may have dropped.", requestId);
+
+      // VITAL FIX: Preserve whatever text was successfully streamed before the crash!
+      set((state) => {
+        const messages = state.messages.map(m => {
+          if (m.id === assistantMessageId || (confirmedMessageId && m.id === confirmedMessageId)) {
+            return { ...m, wasManuallyStopped: true };
+          }
+          return m;
+        });
+        return { isStreaming: false, messages };
+      });
+
     } finally {
       set({ abortController: null, isStreaming: false });
     }

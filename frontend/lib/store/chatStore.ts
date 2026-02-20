@@ -481,9 +481,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
       }
     }
-
-    let assistantParentId = skipUserMessage ? parentId : tempUserMessageId;
-
     set((state) => {
       const newSyncState: Partial<ChatStore> = {
         isStreaming: true,

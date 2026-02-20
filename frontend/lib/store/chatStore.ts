@@ -586,6 +586,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let done = false;
+      let receivedDone = false;
 
       set((state) => {
         if (state.activeRequestId !== requestId) return {};
@@ -640,6 +641,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             const dataStr = line.slice(6);
             if (dataStr === "[DONE]") {
               done = true;
+              receivedDone = true;
               break;
             }
 
@@ -719,65 +721,79 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
 
       if (get().currentSessionId === currentSessionId) {
-        get().loadSessions();
+        if (receivedDone) {
+          get().loadSessions();
 
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const freshMessages: Message[] = await api.get(`/api/sessions/${currentSessionId}/messages`);
-          const freshMap = new Map(freshMessages.map(m => [m.id, m]));
-          const currentMessages = get().messages;
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const freshMessages: Message[] = await api.get(`/api/sessions/${currentSessionId}/messages`);
+            const freshMap = new Map(freshMessages.map(m => [m.id, m]));
+            const currentMessages = get().messages;
 
-          const streamedAssistant = currentMessages.find(m =>
-            m.id === assistantMessageId || (confirmedMessageId && m.id === confirmedMessageId)
-          );
+            const streamedAssistant = currentMessages.find(m =>
+              m.id === assistantMessageId || (confirmedMessageId && m.id === confirmedMessageId)
+            );
 
-          if (streamedAssistant && confirmedMessageId && !freshMap.has(confirmedMessageId)) {
-            const preservedMessage = {
-              ...streamedAssistant,
-              id: confirmedMessageId,
-              parentId: assistantParentId,
-            };
-            freshMessages.push(preservedMessage);
-          } else if (streamedAssistant && confirmedMessageId && freshMap.has(confirmedMessageId)) {
-            // DEFENSIVE CHECK: Don't let the fresh fetch overwrite our accumulated text with empty/shorter text
-            const freshMsg = freshMap.get(confirmedMessageId);
-            if (freshMsg && (!freshMsg.content || freshMsg.content.length < streamedAssistant.content.length)) {
+            if (streamedAssistant && confirmedMessageId && !freshMap.has(confirmedMessageId)) {
               const preservedMessage = {
                 ...streamedAssistant,
                 id: confirmedMessageId,
-                parentId: freshMsg.parentId || assistantParentId, // use database parent ID to prevent orphaning
-                wasManuallyStopped: true, // ensures the UI shows "Click to Continue"
+                parentId: assistantParentId,
               };
-              // Replace the faulty fetched message with our preserved local state
-              const idx = freshMessages.findIndex(m => m.id === confirmedMessageId);
-              if (idx !== -1) {
-                freshMessages[idx] = preservedMessage;
+              freshMessages.push(preservedMessage);
+            } else if (streamedAssistant && confirmedMessageId && freshMap.has(confirmedMessageId)) {
+              // DEFENSIVE CHECK: Don't let the fresh fetch overwrite our accumulated text with empty/shorter text
+              const freshMsg = freshMap.get(confirmedMessageId);
+              if (freshMsg && (!freshMsg.content || freshMsg.content.length < streamedAssistant.content.length)) {
+                const preservedMessage = {
+                  ...streamedAssistant,
+                  id: confirmedMessageId,
+                  parentId: freshMsg.parentId || assistantParentId, // use database parent ID to prevent orphaning
+                  wasManuallyStopped: true, // ensures the UI shows "Click to Continue"
+                };
+                // Replace the faulty fetched message with our preserved local state
+                const idx = freshMessages.findIndex(m => m.id === confirmedMessageId);
+                if (idx !== -1) {
+                  freshMessages[idx] = preservedMessage;
+                }
               }
             }
-          }
 
-          if (!skipUserMessage && tempUserMessageId) {
-            const userMessage = currentMessages.find(m => m.id === tempUserMessageId);
-            const userExists = freshMessages.some(m =>
-              m.role === 'user' &&
-              m.content === content &&
-              m.parentId === effectiveParentId
-            );
-            if (userMessage && !userExists) {
-              freshMessages.push(userMessage);
+            if (!skipUserMessage && tempUserMessageId) {
+              const userMessage = currentMessages.find(m => m.id === tempUserMessageId);
+              const userExists = freshMessages.some(m =>
+                m.role === 'user' &&
+                m.content === content &&
+                m.parentId === effectiveParentId
+              );
+              if (userMessage && !userExists) {
+                freshMessages.push(userMessage);
+              }
             }
+
+            const sortedMessages = sortMessagesByThread(freshMessages, get().activeVersions);
+
+            set((s) => ({
+              messages: sortedMessages,
+              sessions: s.sessions.map((sess) =>
+                sess.id === currentSessionId ? { ...sess, messages: sortedMessages } : sess
+              )
+            }));
+          } catch (err) {
+            console.error("Failed to refresh messages after stream", err);
           }
-
-          const sortedMessages = sortMessagesByThread(freshMessages, get().activeVersions);
-
-          set((s) => ({
-            messages: sortedMessages,
-            sessions: s.sessions.map((sess) =>
-              sess.id === currentSessionId ? { ...sess, messages: sortedMessages } : sess
-            )
-          }));
-        } catch (err) {
-          console.error("Failed to refresh messages after stream", err);
+        } else {
+          // Stream dropped prematurely without sending [DONE] due to an infrastructure timeout
+          // Skip the DB fetch since it contains bad data, and preserve our exact local text state!
+          set((state) => {
+            const messages = state.messages.map(m => {
+              if (m.id === assistantMessageId || (confirmedMessageId && m.id === confirmedMessageId)) {
+                return { ...m, wasManuallyStopped: true };
+              }
+              return m;
+            });
+            return { messages };
+          });
         }
       }
 

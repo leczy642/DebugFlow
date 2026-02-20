@@ -582,6 +582,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       set({ rateLimitedUntil: null });
 
+      let assistantParentId: string | null | undefined = null;
+
       if (!res.body) return;
 
       const reader = res.body.getReader();

@@ -737,6 +737,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               parentId: assistantParentId,
             };
             freshMessages.push(preservedMessage);
+          } else if (streamedAssistant && confirmedMessageId && freshMap.has(confirmedMessageId)) {
+            // DEFENSIVE CHECK: Don't let the fresh fetch overwrite our accumulated text with empty/shorter text
+            const freshMsg = freshMap.get(confirmedMessageId);
+            if (freshMsg && (!freshMsg.content || freshMsg.content.length < streamedAssistant.content.length)) {
+              const preservedMessage = {
+                ...streamedAssistant,
+                id: confirmedMessageId,
+                parentId: assistantParentId,
+              };
+              // Replace the faulty fetched message with our preserved local state
+              const idx = freshMessages.findIndex(m => m.id === confirmedMessageId);
+              if (idx !== -1) {
+                freshMessages[idx] = preservedMessage;
+              }
+            }
           }
 
           if (!skipUserMessage && tempUserMessageId) {

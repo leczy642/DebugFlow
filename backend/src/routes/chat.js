@@ -182,7 +182,6 @@ router.post("/", requireNotBlocked, async (req, res) => {
       }
 
       if (!isAborted) {
-        res.write(`data: [DONE]\n\n`);
         if (fullAiReply) {
           await appendMessageContent(assistantMessageId, fullAiReply, pool);
           if (sessionInfo?.user_id) {
@@ -194,6 +193,7 @@ router.post("/", requireNotBlocked, async (req, res) => {
             });
           }
         }
+        res.write(`data: [DONE]\n\n`);
       }
       res.end();
     } catch (streamError) {

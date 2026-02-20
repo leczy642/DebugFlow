@@ -200,6 +200,14 @@ router.post("/", requireNotBlocked, async (req, res) => {
     } catch (streamError) {
       logger.error("Streaming error", { error: streamError.message });
       if (!isAborted) {
+        // VITAL FIX: Save the partial text generated right before the crash.
+        if (fullAiReply) {
+          try {
+            await appendMessageContent(assistantMessageId, fullAiReply, pool);
+          } catch (e) {
+            logger.warn("Failed to rescue partial message content", { error: e.message });
+          }
+        }
         res.write(`data: ${JSON.stringify({ error: "Error generating response" })}\n\n`);
         res.end();
       }

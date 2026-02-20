@@ -599,6 +599,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             assistantMessageId = targetMessage.id || "";
             accumulatedContent = targetMessage.content;
             assistantParentId = targetMessage.parentId;
+            confirmedMessageId = assistantMessageId; // VITAL: Ensure defensive checks run for continuations!
             return {
               awaitingSessionId: null,
               messages: state.messages.map(m =>
@@ -744,7 +745,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               const preservedMessage = {
                 ...streamedAssistant,
                 id: confirmedMessageId,
-                parentId: assistantParentId,
+                parentId: freshMsg.parentId || assistantParentId, // use database parent ID to prevent orphaning
+                wasManuallyStopped: true, // ensures the UI shows "Click to Continue"
               };
               // Replace the faulty fetched message with our preserved local state
               const idx = freshMessages.findIndex(m => m.id === confirmedMessageId);

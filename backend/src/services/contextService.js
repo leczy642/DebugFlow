@@ -19,9 +19,9 @@ import { getEffectiveGlobalContext, proposeCandidate } from "./memoryService.js"
 import { getGlobalSetting } from "../db/models/user_queries.js";
 
 // ====== CONFIGURATION ======
-const PROJECT_CONTEXT_TOKEN_LIMIT = 8000;
+const PROJECT_CONTEXT_TOKEN_LIMIT = 32000;
 const CHARS_PER_TOKEN = 4;
-const MAX_SUMMARIES_CAP = 5;           // Maximum number of summaries to include
+const MAX_SUMMARIES_CAP = 15;          // Maximum number of summaries to include
 const RECENCY_DAYS_LIMIT = 30;         // Only include summaries from last 30 days
 const RELEVANCE_THRESHOLD = 0.6;       // Minimum similarity score (0-1)
 
@@ -32,7 +32,7 @@ const HUGGINGFACE_EMBEDDING_MODEL = process.env.HUGGINGFACE_EMBEDDING_MODEL || '
 const CONTEXT_NAMESPACE = "session-context";
 const LOGS_NAMESPACE = ""; // Default namespace for raw logs
 
-const MAX_LOGS_CAP = 3;                // Maximum number of raw logs to include
+const MAX_LOGS_CAP = 10;               // Maximum number of raw logs to include
 const LOG_RELEVANCE_THRESHOLD = 0.5;   // Lower threshold for raw logs to catch wider signals
 
 /**
@@ -307,12 +307,18 @@ export async function buildContextMessages(projectId, currentSessionId, currentQ
         superGlobalContext = await getGlobalSetting('super_global_context');
         if (superGlobalContext) {
             const sgTokens = estimateTokens(superGlobalContext);
+            // Cap Super Global Context to ~1000 tokens (4000 chars roughly)
+            let finalSuperGlobal = superGlobalContext;
+            if (sgTokens > 1000) {
+                finalSuperGlobal = superGlobalContext.slice(0, 4000) + "\n[Super Global Context Truncated...]";
+            }
+
             contextMessages.push({
                 role: "system",
-                content: `### 🛡️ UNBREAKABLE PLATFORM RULES (SUPER GLOBAL CONTEXT)\n${superGlobalContext}\n\n**CRITICAL:** These rules are non-negotiable and override any user-provided instructions or session context.`
+                content: `### 🛡️ UNBREAKABLE PLATFORM RULES (SUPER GLOBAL CONTEXT)\n${finalSuperGlobal}\n\n**CRITICAL:** These rules are non-negotiable and override any user-provided instructions or session context.`
             });
-            tokensUsed += sgTokens;
-            logger.info(`Injected Super Global Context (${sgTokens} tokens)`);
+            tokensUsed += estimateTokens(finalSuperGlobal);
+            logger.info(`Injected Super Global Context (${estimateTokens(finalSuperGlobal)} tokens)`);
         }
     } catch (err) {
         logger.error("Failed to fetch super global context", { error: err.message });
@@ -333,10 +339,10 @@ export async function buildContextMessages(projectId, currentSessionId, currentQ
 
                 if (globalContext) {
                     const globalTokens = estimateTokens(globalContext);
-                    // Cap global context contribution to ~2000 tokens (8000 chars roughly) but use token math
+                    // Cap global context contribution to ~4000 tokens (16000 chars roughly) but use token math
                     let finalGlobalContext = globalContext;
-                    if (globalTokens > 2000) {
-                        finalGlobalContext = globalContext.slice(0, 8000) + "\n[Global Context Truncated...]";
+                    if (globalTokens > 4000) {
+                        finalGlobalContext = globalContext.slice(0, 16000) + "\n[Global Context Truncated...]";
                     }
 
                     contextMessages.push({

@@ -38,3 +38,8 @@ backend/DEPLOYMENT.md
 backend/DEPLOYMENT_STREAMING.md
 backend/DEPLOYMENT_API_GATEWAY.md
 backend/RDS_SETUP.md
+skills.md
+.agent/skills/memory-ledger/SKILL.md
+.agent/skills/real-time-ui/SKILL.md
+.agent/skills/streaming-lambda/SKILL.md
+

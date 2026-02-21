@@ -181,7 +181,7 @@ export default function ProjectSettingsModal({
                                 value={instructions}
                                 onChange={(e) => setInstructions(e.target.value)}
                                 rows={4}
-                                maxLength={2000}
+                                maxLength={16000}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-400 resize-none"
                                 placeholder="e.g., This project is about debugging React authentication issues. Always suggest React-specific solutions..."
                                 disabled={!contextEnabled}
@@ -191,7 +191,7 @@ export default function ProjectSettingsModal({
                                     These instructions are included in every chat within this project
                                 </p>
                                 <span className="text-xs text-gray-400">
-                                    {instructions.length}/2000
+                                    {instructions.length}/16000
                                 </span>
                             </div>
                         </div>

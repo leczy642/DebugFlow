@@ -359,10 +359,18 @@ export default function GlobalSettingsModal({ isOpen, onClose, view = 'memory' }
                                                             <textarea
                                                                 rows={8}
                                                                 className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                                                                placeholder="e.g., 'I am a senior engineer. Be concise. Prefer functional programming.'"
+                                                                placeholder={`E.g. Technical: 'Senior React Dev. Be concise. Prefer functional style.'
+E.g. Learning: 'I'm learning Rust. Explain concepts as if I'm a beginner but with C++ experience.'
+E.g. Creative: 'I'm a fantasy novelist. Keep my world-building consistent with hard magic rules.'
+E.g. Language: 'I'm practicing French. Respond in English but provide beginner-level translations.'`}
                                                                 value={instructions}
                                                                 onChange={(e) => setInstructions(e.target.value)}
+                                                                maxLength={16000}
                                                             />
+                                                            <div className="flex justify-between items-center text-xs text-gray-400">
+                                                                <p>These instructions define the AI's base behavior across ALL projects.</p>
+                                                                <span>{instructions.length}/16000</span>
+                                                            </div>
                                                             <div className="flex justify-end">
                                                                 <button
                                                                     type="button"

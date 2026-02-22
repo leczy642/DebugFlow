@@ -29,7 +29,7 @@ export async function streamChatWithAI(messages) {
   const stream = hf.chatCompletionStream({
     model: LLM_CHAT_MODEL,
     messages: messages,
-    max_tokens: 5333,
+    max_tokens: 65536,
   });
 
   return stream;

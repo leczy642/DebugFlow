@@ -204,7 +204,11 @@ router.post("/", requireNotBlocked, async (req, res) => {
       }
       res.end();
     } catch (streamError) {
-      logger.error("Streaming error", { error: streamError.message });
+      logger.error("Streaming error", {
+        message: streamError.message,
+        stack: streamError.stack,
+        sessionId
+      });
       if (!isAborted) {
         // VITAL FIX: Save the partial text generated right before the crash.
         if (fullAiReply) {

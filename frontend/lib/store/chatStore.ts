@@ -78,6 +78,8 @@ type ChatStore = {
   lastUpdatedSessionId: string | null;
   awaitingSessionId: string | null;
   isStreaming: boolean;
+  streamingStatus: string | null;
+  searchSources: Record<string, { index: number, title: string, url: string }[]>;
   abortController: AbortController | null;
   rateLimitedUntil: string | null;
   clearRateLimit: () => void;
@@ -193,6 +195,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   lastUpdatedSessionId: null,
   awaitingSessionId: null,
   isStreaming: false,
+  streamingStatus: null,
+  searchSources: {},
   abortController: null,
   activeRequestId: null,
   rateLimitedUntil: null,
@@ -652,6 +656,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 // UI Fluidity Fix: We NO LONGER clear awaitingSessionId on status pulses (connecting, building_context).
                 // This ensures the loader/skeleton stays active until the first real 'data.content' 
                 // chunk arrives, preventing the "empty screen jump".
+
+                if (data.status === "searching" || data.status === "reading" || data.status === "generating") {
+                  // Reactivate the loader specifically when the model is pausing for a web search or shifting phases.
+                  set({
+                    awaitingSessionId: currentSessionId,
+                    streamingStatus: data.status
+                  });
+                }
                 continue;
               }
 
@@ -693,6 +705,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 assistantMessageId = data.messageId;
               }
 
+              if (data.sources && Array.isArray(data.sources)) {
+                set((state) => ({
+                  searchSources: {
+                    ...state.searchSources,
+                    [assistantMessageId]: data.sources
+                  }
+                }));
+              }
+
               if (data.content) {
                 accumulatedContent += data.content;
 
@@ -706,6 +727,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                   ),
                   // Loader management: only clear the loading state once text starts appearing.
                   awaitingSessionId: null,
+                  streamingStatus: null,
                 }));
               }
 
@@ -995,6 +1017,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return {
         messages: updatedMessages.filter(m => (!m.id?.startsWith('temp_ai_') || m.content.trim() !== '') || m.wasManuallyStopped),
         awaitingSessionId: null,
+        streamingStatus: null,
         activeRequestId: null,
         abortController: null,
         isStreaming: false

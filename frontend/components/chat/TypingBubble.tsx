@@ -1,61 +1,69 @@
-// components/chat/TypingBubble.tsx
-/**
- * TypingBubble.tsx
- * -----------------------------------------------------------------------------
- * PURPOSE:
- * Renders a visual indicator that simulates typing activity when the AI is
- * processing or generating a response. Provides user feedback that the system
- * is actively working on a reply.
- *
- * ROLE IN PROJECT:
- * - User experience component for indicating active processing states
- * - Visual feedback during AI response generation
- * - Placeholder element that appears while streaming is in progress
- * - Part of the chat interface's real-time interaction feedback system
- *
- * WHAT THIS FILE DOES:
- * 1. Displays three animated dots with sequential pulsing animation
- * 2. Uses CSS animations with staggered delays to create typing effect
- * 3. Renders within message bubble styling consistent with assistant messages
- * 4. Provides clear visual indication that content is being generated
- *
- * INPUTS:
- * - None (stateless component with no props)
- *
- * OUTPUTS:
- * - Visual typing indicator with animated dots
- * - Styled bubble container matching assistant message appearance
- *
- * IMPORTANT:
- * This component is purely presentational with no internal state.
- * The animation delays create a realistic typing effect that signals
- * activity without requiring actual content to be displayed.
- * The component should only be shown when the AI is actively generating
- * a response (typically during streaming).
- * -----------------------------------------------------------------------------
- */
-
 "use client";
 import React from "react";
+import { useChatStore } from "@/lib/store/chatStore";
+import {
+  MagnifyingGlassIcon,
+  BookOpenIcon,
+  SparklesIcon,
+  ArrowPathIcon
+} from "@heroicons/react/24/outline";
 
 export default function TypingBubble() {
+  const streamingStatus = useChatStore((state) => state.streamingStatus);
+
+  const getStatusConfig = () => {
+    switch (streamingStatus) {
+      case "searching":
+        return {
+          icon: <MagnifyingGlassIcon className="w-4 h-4 animate-bounce" />,
+          label: "Searching the web...",
+          bgColor: "bg-blue-50 text-blue-600 border-blue-100",
+          iconColor: "text-blue-500"
+        };
+      case "reading":
+        return {
+          icon: <BookOpenIcon className="w-4 h-4 animate-pulse" />,
+          label: "Reading results...",
+          bgColor: "bg-purple-50 text-purple-600 border-purple-100",
+          iconColor: "text-purple-500"
+        };
+      case "generating":
+        return {
+          icon: <SparklesIcon className="w-4 h-4 animate-spin-slow" />,
+          label: "Generating response...",
+          bgColor: "bg-indigo-50 text-indigo-600 border-indigo-100",
+          iconColor: "text-indigo-500"
+        };
+      default:
+        return {
+          icon: <ArrowPathIcon className="w-4 h-4 animate-spin" />,
+          label: "Thinking...",
+          bgColor: "bg-gray-50 text-gray-500 border-gray-100",
+          iconColor: "text-gray-400"
+        };
+    }
+  };
+
+  const config = getStatusConfig();
+
   return (
-    <div className="flex items-start mb-3">
-      {/* Typing bubble container - matches assistant message styling */}
-      <div className="bg-gray-100 text-gray-700 px-4 py-2 rounded-2xl inline-flex items-center">
-        {/* Animated dots with staggered delays for typing effect */}
-        <span
-          className="dot h-2 w-2 bg-gray-500 rounded-full mr-1 animate-pulse"
-          style={{ animationDelay: "0s" }}
-        />
-        <span
-          className="dot h-2 w-2 bg-gray-500 rounded-full mr-1 animate-pulse"
-          style={{ animationDelay: "150ms" }}
-        />
-        <span
-          className="dot h-2 w-2 bg-gray-500 rounded-full animate-pulse"
-          style={{ animationDelay: "300ms" }}
-        />
+    <div className="flex items-start mb-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className={`
+        inline-flex items-center gap-2.5 px-4 py-3 rounded-2xl border shadow-sm
+        transition-all duration-500 ease-in-out relative overflow-hidden
+        ${config.bgColor}
+      `}>
+        <div className={config.iconColor}>
+          {config.icon}
+        </div>
+        <span className="text-sm font-semibold tracking-tight">
+          {config.label}
+        </span>
+
+        {/* Subtle shimmer effect */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full animate-shimmer" />
+        </div>
       </div>
     </div>
   );

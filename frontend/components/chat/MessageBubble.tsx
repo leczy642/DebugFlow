@@ -50,6 +50,7 @@ import { ClipboardDocumentIcon, TrashIcon, ArrowPathIcon, ChevronLeftIcon, Chevr
 import { useState, useEffect, useRef } from "react";
 import DeleteConfirmationModal from "./DeleteConfirmationModal";
 import StreamingMarkdown from "./StreamingMarkdown";
+import { useChatStore } from "@/lib/store/chatStore";
 
 type Message = {
   id?: string;
@@ -218,9 +219,11 @@ export default function MessageBubble({
       );
     }
 
+    const sources = message.id ? useChatStore.getState().searchSources[message.id] : undefined;
+
     return (
       <div className="rounded-lg relative text-gray-900 px-1 py-1 text-left w-full overflow-hidden">
-        <StreamingMarkdown content={message.content} isStreaming={isStreaming} />
+        <StreamingMarkdown content={message.content} isStreaming={isStreaming} sources={sources} />
       </div>
     );
   };
@@ -257,8 +260,8 @@ export default function MessageBubble({
                 </div>
               )}
 
-              {/* Action buttons - visible on hover, hidden for deleted messages */}
-              {!message.isDeleted && (
+              {/* Action buttons - visible on hover, hidden for deleted messages or during streaming */}
+              {!message.isDeleted && !isStreaming && (
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   {/* Copy button with temporary success indicator */}
                   <button onClick={handleCopy} title="Copy" className="p-1 hover:bg-gray-200 rounded text-gray-500">

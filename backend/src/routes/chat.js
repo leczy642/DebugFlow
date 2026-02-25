@@ -176,11 +176,32 @@ router.post("/", requireNotBlocked, async (req, res) => {
     res.on("close", cleanup);
 
     try {
-      // Initialize LLM stream
       const stream = await streamChatWithAI(history);
       for await (const chunk of stream) {
         if (isAborted) break;
-        const content = chunk.choices[0]?.delta?.content || "";
+
+        // Handle the custom "searching" signal from chatService
+        if (chunk.isSearching) {
+          res.write(`data: ${JSON.stringify({ status: "searching" })}\n\n`);
+          continue;
+        }
+
+        if (chunk.isReading) {
+          res.write(`data: ${JSON.stringify({ status: "reading" })}\n\n`);
+          continue;
+        }
+
+        if (chunk.isGenerating) {
+          res.write(`data: ${JSON.stringify({ status: "generating" })}\n\n`);
+          continue;
+        }
+
+        if (chunk.searchSources) {
+          res.write(`data: ${JSON.stringify({ sources: chunk.searchSources })}\n\n`);
+          continue;
+        }
+
+        const content = chunk.choices?.[0]?.delta?.content || "";
         if (content) {
           fullAiReply += content;
           // Stream content chunks to the frontend as they arrive from the AI.

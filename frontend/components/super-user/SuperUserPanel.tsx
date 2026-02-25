@@ -149,6 +149,8 @@ export default function SuperUserPanel() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [expandedReasons, setExpandedReasons] = useState<Set<string>>(new Set());
+    const [systemSettings, setSystemSettings] = useState<{ web_search_enabled: boolean } | null>(null);
+    const [isTogglingSearch, setIsTogglingSearch] = useState(false);
 
     // Search State
     const [searchQuery, setSearchQuery] = useState("");
@@ -209,6 +211,27 @@ export default function SuperUserPanel() {
             setLoading(false);
         }
     }, []);
+
+    const fetchSystemSettings = useCallback(async () => {
+        try {
+            const data = await api.get('/api/admin/settings');
+            setSystemSettings(data);
+        } catch (err) {
+            console.error("Failed to fetch system settings", err);
+        }
+    }, []);
+
+    const toggleWebSearch = async (enabled: boolean) => {
+        setIsTogglingSearch(true);
+        try {
+            await api.put('/api/admin/settings/web_search_enabled', { value: String(enabled) });
+            setSystemSettings(prev => prev ? { ...prev, web_search_enabled: enabled } : null);
+        } catch (err) {
+            alert("Failed to update setting.");
+        } finally {
+            setIsTogglingSearch(false);
+        }
+    };
 
     const handleDenyPromotion = async (userId: string, userEmail: string) => {
         if (!confirm(`Are you sure you want to deny the promotion request for ${userEmail}?`)) return;
@@ -333,7 +356,8 @@ export default function SuperUserPanel() {
 
     useEffect(() => {
         fetchData();
-    }, [fetchData]);
+        fetchSystemSettings();
+    }, [fetchData, fetchSystemSettings]);
 
     if (loading && admins.length === 0) {
         return (
@@ -350,6 +374,32 @@ export default function SuperUserPanel() {
                     <ShieldCheckIcon className="w-8 h-8 text-blue-600" />
                     Super User Control Panel
                 </h1>
+
+                {/* SYSTEM CONTROLS */}
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-8">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-4">System Controls</h2>
+                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
+                        <div>
+                            <p className="font-medium text-gray-800">Web Search (AI)</p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                                {systemSettings?.web_search_enabled
+                                    ? "Active — AI can search the web for technical answers."
+                                    : "Disabled — AI will answer from training data only."}
+                            </p>
+                        </div>
+                        <button
+                            id="web-search-toggle"
+                            onClick={() => toggleWebSearch(!systemSettings?.web_search_enabled)}
+                            disabled={isTogglingSearch || systemSettings === null}
+                            className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-300 focus:outline-none disabled:opacity-50 ${systemSettings?.web_search_enabled ? 'bg-blue-600' : 'bg-gray-300'
+                                }`}
+                            title={systemSettings?.web_search_enabled ? 'Disable Web Search' : 'Enable Web Search'}
+                        >
+                            <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-300 ${systemSettings?.web_search_enabled ? 'translate-x-6' : 'translate-x-1'
+                                }`} />
+                        </button>
+                    </div>
+                </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                     {/* GLOBAL CONTEXT MANAGEMENT */}

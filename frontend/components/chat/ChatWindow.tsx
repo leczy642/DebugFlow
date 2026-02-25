@@ -16,33 +16,18 @@
  * - Manages auto-scrolling behavior during streaming responses
  * - Coordinates with MessageBubble components for message interactions
  *
- * WHAT THIS FILE DOES:
- * 1. Builds thread structure from flat message list using parent-child relationships
- * 2. Manages state for active version selection at each branching point
- * 3. Handles auto-scrolling logic during streaming and message updates
- * 4. Provides scroll-to-bottom functionality for long conversations
- * 5. Renders message bubbles with version selection controls
- *
- * INPUTS:
- * - Messages from chatStore (including thread relationships)
- * - User interactions (version selection, scrolling)
- * - Streaming state to manage auto-scroll behavior
- *
- * OUTPUTS:
- * - Visual representation of chat history with thread navigation
- * - Scroll position management
- * - User interactions forwarded to chatStore (regenerate, delete, edit, restore)
- *
- * IMPORTANT:
- * This component handles complex thread reconstruction from flat message data.
- * It maintains separate UI state for active version selection while delegating
- * message operations to the chatStore.
+ * SCROLLING STRATEGY:
+ * Uses Virtuoso's native `followOutput` callback for reliable sticky scrolling.
+ * - When user is at the bottom: content pushes upward, scrollbar stays locked.
+ * - When user scrolls away: auto-scroll stops, content grows downward freely.
+ * - When user scrolls back to bottom: auto-scroll re-engages automatically.
+ * - On submit: view forcibly snaps to bottom to reveal status tags.
  * -----------------------------------------------------------------------------
  */
 "use client";
 
 import MessageBubble from "./MessageBubble";
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { ArrowDownIcon } from "@heroicons/react/24/solid";
 import TypingBubble from "./TypingBubble";
 import { useChatStore } from "../../lib/store/chatStore";
@@ -72,6 +57,7 @@ export default function ChatWindow() {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
+  const atBottomRef = useRef(true);
 
   const [activeLinkId, setActiveLinkId] = useState<string | null>(null);
 
@@ -142,29 +128,45 @@ export default function ChatWindow() {
     setActiveVersion(parentIdKey, messageId);
   };
 
-  // Auto-scroll logic for Virtuoso
-  useEffect(() => {
-    if (isStreaming && atBottom && virtuosoRef.current) {
+  // ─── SCROLLING LOGIC ──────────────────────────────────────────────────────
+
+  // Scroll-to-bottom helper (used by submit jump and arrow button)
+  const scrollToBottom = useCallback((behavior: 'auto' | 'smooth' = 'auto') => {
+    if (virtuosoRef.current) {
       virtuosoRef.current.scrollToIndex({
-        index: thread.length - 1,
-        behavior: 'auto'
+        index: 'LAST',
+        align: 'end',
+        behavior
       });
     }
-  }, [thread.length, isStreaming, atBottom]);
+  }, []);
 
-  // Handle initial scroll or session switch
+  // 1. Jump to Bottom on Submit — reveals TypingBubble/status tags instantly
+  const prevAwaitingRef = useRef<string | null>(null);
+  useEffect(() => {
+    // Only fire when awaitingSessionId transitions from null → a value (user just hit submit)
+    if (awaitingSessionId && !prevAwaitingRef.current) {
+      // Small delay for the new user message to render into the thread
+      setTimeout(() => scrollToBottom('auto'), 50);
+    }
+    prevAwaitingRef.current = awaitingSessionId;
+  }, [awaitingSessionId, scrollToBottom]);
+
+  // 2. followOutput Callback — Virtuoso's native sticky-bottom mechanism
+  //    Returns 'auto' when at the bottom → Virtuoso keeps you pinned (content pushes up).
+  //    Returns false when scrolled away → Virtuoso leaves you alone (content grows down).
+  const followOutput = useCallback((isAtBottom: boolean) => {
+    if (isAtBottom) return 'auto';
+    return false;
+  }, []);
+
+  // 3. Handle session switch — scroll to end of loaded conversation
   useEffect(() => {
     if (currentSessionId && thread.length > 0 && !isStreaming) {
-      // Small timeout to ensure Virtuoso has rendered
-      const timer = setTimeout(() => {
-        virtuosoRef.current?.scrollToIndex({
-          index: thread.length - 1,
-          behavior: 'auto'
-        });
-      }, 100);
+      const timer = setTimeout(() => scrollToBottom('auto'), 100);
       return () => clearTimeout(timer);
     }
-  }, [currentSessionId, thread.length === 0]); // Trigger on session change or if thread first appears
+  }, [currentSessionId]);
 
   const isLoading = currentSessionId && loadingSessionId === currentSessionId;
 
@@ -186,10 +188,12 @@ export default function ChatWindow() {
           className="h-full"
           initialTopMostItemIndex={thread.length > 0 ? thread.length - 1 : 0}
           atBottomStateChange={(bottom) => {
+            atBottomRef.current = bottom;
             setAtBottom(bottom);
             setShowScrollButton(!bottom);
           }}
-          atBottomThreshold={200}
+          atBottomThreshold={100}
+          followOutput={followOutput}
           increaseViewportBy={400}
           itemContent={(index, item) => (
             <div className={`max-w-4xl mx-auto px-6 ${index === 0 ? 'pt-6' : ''}`}>
@@ -210,13 +214,13 @@ export default function ChatWindow() {
                 onDelete={item.message.id ? () => deleteMessage(item.message.id!) : undefined}
                 onEdit={item.message.id ? (newContent) => useChatStore.getState().editMessage(item.message.id!, newContent) : undefined}
                 onRestore={item.message.id ? () => useChatStore.getState().restoreMessage(item.message.id!) : undefined}
-                isStreaming={isStreaming}
+                isStreaming={isStreaming && index === thread.length - 1}
               />
             </div>
           )}
           components={{
             Footer: () => (
-              <div className="max-w-4xl mx-auto px-6 pb-32">
+              <div className="max-w-4xl mx-auto px-6 pb-28">
                 {!!currentSessionId && awaitingSessionId === currentSessionId && <TypingBubble />}
               </div>
             )
@@ -248,12 +252,7 @@ export default function ChatWindow() {
       {showScrollButton && (
         <button
           aria-label="Scroll to bottom"
-          onClick={() => {
-            virtuosoRef.current?.scrollToIndex({
-              index: thread.length - 1,
-              behavior: 'smooth'
-            });
-          }}
+          onClick={() => scrollToBottom('smooth')}
           className="fixed right-6 z-50 bottom-24 bg-white border border-gray-200 shadow-lg p-2 rounded-full hover:scale-105 transition-transform"
         >
           <ArrowDownIcon className="h-5 w-5 text-gray-700" />

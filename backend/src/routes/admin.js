@@ -16,7 +16,9 @@ import {
     setUserSuggestion,
     logAuditEvent,
     getUserById,
-    updateUserRole
+    updateUserRole,
+    getGlobalSetting,
+    updateGlobalSetting
 } from "../db/models/user_queries.js";
 import {
     getTopUsersByUsage,
@@ -273,6 +275,45 @@ router.get("/usage/stats", async (req, res) => {
     } catch (err) {
         logger.error("Usage Stats Fetch Failed", { error: err.message });
         res.status(500).json({ error: "Failed to fetch usage stats" });
+    }
+});
+
+/**
+ * GET /api/admin/settings
+ * Returns current system settings (readable by all admins).
+ */
+router.get("/settings", async (req, res) => {
+    try {
+        const webSearchEnabled = await getGlobalSetting("web_search_enabled");
+        res.json({
+            web_search_enabled: webSearchEnabled !== "false" // default true if not set
+        });
+    } catch (err) {
+        logger.error("System Settings Fetch Failed", { error: err.message });
+        res.status(500).json({ error: "Failed to fetch system settings" });
+    }
+});
+
+/**
+ * PUT /api/admin/settings/:key
+ * Updates a system setting. Super User only.
+ */
+router.put("/settings/:key", requireRole(['super_user']), async (req, res) => {
+    const { key } = req.params;
+    const { value } = req.body;
+
+    const allowedKeys = ["web_search_enabled"];
+    if (!allowedKeys.includes(key)) {
+        return res.status(400).json({ error: `Unknown setting key: '${key}'` });
+    }
+
+    try {
+        await updateGlobalSetting(key, String(value), req.user.role);
+        await logAuditEvent(req.user.uid, null, "SYSTEM_SETTING_CHANGED", { key, value });
+        res.json({ success: true, key, value: String(value) });
+    } catch (err) {
+        logger.error("System Setting Update Failed", { error: err.message });
+        res.status(500).json({ error: "Failed to update system setting" });
     }
 });
 

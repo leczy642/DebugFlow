@@ -69,6 +69,7 @@ async function setupProductionDB() {
             is_deleted BOOLEAN DEFAULT FALSE,
             deleted_at TIMESTAMP,
             deleted_by VARCHAR(255),
+            sources JSONB,
             created_at TIMESTAMP DEFAULT NOW()
           );
         `);

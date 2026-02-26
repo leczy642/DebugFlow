@@ -49,6 +49,7 @@ type Message = {
   parentId?: string | null;
   isDeleted?: boolean;
   wasManuallyStopped?: boolean;
+  sources?: { index: number, title: string, url: string }[];
   created_at?: string;
 };
 
@@ -403,8 +404,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (state.currentSessionId !== id) return;
       if (state.sessionLoadRequestId !== requestId) return;
 
+      const sourcesMap: Record<string, { index: number, title: string, url: string }[]> = {};
+      messages.forEach(m => {
+        if (m.id && m.sources && Array.isArray(m.sources)) {
+          sourcesMap[m.id] = m.sources;
+        }
+      });
+
       set((s) => ({
         messages,
+        searchSources: {
+          ...s.searchSources,
+          ...sourcesMap
+        },
         loadingSessionId: null,
         sessionLoadAbortController: null,
         sessions: s.sessions.map((sess) => (sess.id === id ? { ...sess, messages } : sess)),
@@ -795,8 +807,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
             const sortedMessages = sortMessagesByThread(freshMessages, get().activeVersions);
 
+            const sourcesMap: Record<string, { index: number, title: string, url: string }[]> = {};
+            freshMessages.forEach(m => {
+              if (m.id && m.sources && Array.isArray(m.sources)) {
+                sourcesMap[m.id] = m.sources;
+              }
+            });
+
             set((s) => ({
               messages: sortedMessages,
+              searchSources: {
+                ...s.searchSources,
+                ...sourcesMap
+              },
               sessions: s.sessions.map((sess) =>
                 sess.id === currentSessionId ? { ...sess, messages: sortedMessages } : sess
               )

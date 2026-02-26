@@ -11,6 +11,7 @@ import { requireNotBlocked } from "../middleware/roleMiddleware.js";
 import {
   addMessage,
   appendMessageContent,
+  setMessageSources,
   sessionExists,
   getSessionWithMessages,
 } from "../db/models/postgres_session_queries.js";
@@ -175,6 +176,8 @@ router.post("/", requireNotBlocked, async (req, res) => {
     req.on("close", cleanup);
     res.on("close", cleanup);
 
+    let collectedSources = null;
+
     try {
       const stream = await streamChatWithAI(history);
       for await (const chunk of stream) {
@@ -197,6 +200,7 @@ router.post("/", requireNotBlocked, async (req, res) => {
         }
 
         if (chunk.searchSources) {
+          collectedSources = chunk.searchSources;
           res.write(`data: ${JSON.stringify({ sources: chunk.searchSources })}\n\n`);
           continue;
         }
@@ -211,6 +215,9 @@ router.post("/", requireNotBlocked, async (req, res) => {
 
       if (fullAiReply) {
         await appendMessageContent(assistantMessageId, fullAiReply, pool);
+        if (collectedSources) {
+          await setMessageSources(assistantMessageId, collectedSources, pool);
+        }
         if (!isAborted && sessionInfo?.user_id) {
           setImmediate(async () => {
             try {

@@ -96,6 +96,7 @@ export async function ensureUsersTableExists() {
         await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES projects(id)`);
         await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS context_summary TEXT`);
         await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_updated_at TIMESTAMP`);
+        await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS sources JSONB`);
 
         // Name migration
         try {

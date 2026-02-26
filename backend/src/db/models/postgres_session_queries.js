@@ -83,7 +83,7 @@ export async function getSessionWithMessages(sessionId) {
     if (sessionRes.rowCount === 0) return null;
 
     const messagesRes = await pool.query(
-      `SELECT id, role, content, created_at, parent_id as "parentId", is_deleted as "isDeleted"
+      `SELECT id, role, content, sources, created_at, parent_id as "parentId", is_deleted as "isDeleted"
        FROM messages
        WHERE session_id = $1
        ORDER BY created_at ASC`,
@@ -244,6 +244,19 @@ export async function appendMessageContent(
      SET updated_at = NOW()
      WHERE id = (SELECT session_id FROM messages WHERE id = $1)`,
     [messageId]
+  );
+}
+
+export async function setMessageSources(
+  messageId,
+  sources,
+  client = pool
+) {
+  await client.query(
+    `UPDATE messages
+     SET sources = $2
+     WHERE id = $1`,
+    [messageId, JSON.stringify(sources)]
   );
 }
 

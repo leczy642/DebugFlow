@@ -196,7 +196,7 @@ export default function ChatWindow() {
           followOutput={followOutput}
           increaseViewportBy={400}
           itemContent={(index, item) => (
-            <div className={`max-w-4xl mx-auto px-6 ${index === 0 ? 'pt-6' : ''}`}>
+            <div className={`max-w-4xl mx-auto px-6 overflow-hidden ${index === 0 ? 'pt-6' : ''}`}>
               <MessageBubble
                 key={item.message.id || index}
                 id={item.message.id ? `msg-${item.message.id}` : undefined}

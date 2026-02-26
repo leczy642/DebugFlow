@@ -195,7 +195,7 @@ export default function MessageBubble({
     // User messages: plain text with sky blue background
     if (isUser) {
       return (
-        <div className="rounded-lg whitespace-pre-wrap relative bg-sky-100 text-gray-900 p-3 text-left">
+        <div className="rounded-lg whitespace-pre-wrap break-all overflow-hidden relative bg-sky-100 text-gray-900 p-3 text-left">
           {message.content}
         </div>
       );
@@ -230,8 +230,8 @@ export default function MessageBubble({
 
   return (
     <>
-      <div id={id} className={`group flex my-3 ${isUser ? "justify-end" : "justify-start"}`}>
-        <div className={`flex flex-col min-w-0 ${isUser ? "max-w-[90%] items-end" : "w-full items-start"}`}>
+      <div id={id} className={`group flex my-3 min-w-0 overflow-hidden ${isUser ? "justify-end" : "justify-start"}`}>
+        <div className={`flex flex-col min-w-0 overflow-hidden ${isUser ? "max-w-[90%] items-end" : "w-full items-start"}`}>
 
           {/* Main content area */}
           {renderContent()}

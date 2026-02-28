@@ -55,7 +55,7 @@ CITATION RULES (you MUST follow these):
  * Helper to get the standard and fast models from environment variables.
  */
 function getModels() {
-  const smartModel = process.env.HUGGINGFACE_CHAT_MODEL || "deepseek-ai/DeepSeek-V3.2:fireworks-ai";
+  const smartModel = process.env.HUGGINGFACE_CHAT_MODEL || "deepseek-ai/DeepSeek-V3.2:novita";
   // Fallback to smart model if fast model is not defined
   const fastModel = process.env.HUGGINGFACE_FAST_MODEL || smartModel;
   return { smartModel, fastModel };
@@ -183,7 +183,8 @@ export async function chatWithAI(messages) {
   const response = await hf.chatCompletion({
     model: smartModel,
     messages: finalMessages,
-    max_tokens: 65536,
+    //max_tokens: 65536,
+    max_tokens: 16000,
   });
 
   return response.choices[0]?.message?.content || "";
@@ -265,11 +266,13 @@ export async function* streamChatWithAI(messages) {
   console.log(`🧠 Starting stream with smart model: ${smartModel}`);
   yield { isGenerating: true };
 
+  //start streaming setup
   try {
     const stream = hf.chatCompletionStream({
       model: smartModel,
       messages: finalMessages,
-      max_tokens: 65536,
+      //max_tokens: 65536,
+      max_tokens: 16000,
     });
 
     for await (const chunk of stream) {

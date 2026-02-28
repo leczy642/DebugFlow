@@ -332,14 +332,14 @@ export default function LoginPage() {
             </div>
 
             {/* DEBUG PANEL - TEMPORARY */}
-            <div className="fixed bottom-0 left-0 w-full bg-yellow-50 border-t border-yellow-200 p-4 text-[10px] font-mono overflow-auto max-h-40 z-50">
+            {/* <div className="fixed bottom-0 left-0 w-full bg-yellow-50 border-t border-yellow-200 p-4 text-[10px] font-mono overflow-auto max-h-40 z-50">
                 <h3 className="font-bold text-yellow-800">🕵️ DEBUGGER</h3>
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <strong className="block text-yellow-700">Client-Side (Browser):</strong>
                         <div>NEXT_PUBLIC_BACKEND_URL: {process.env.NEXT_PUBLIC_BACKEND_URL || 'undefined'}</div>
                         <div>API BASE_URL (Computed): {api.BASE_URL || 'undefined'}</div>
-                        {/* Note: we need to expose BASE_URL property on api object or import it */}
+                        {/* Note: we need to expose BASE_URL property on api object or import it * /}
                         <div><p>SimpleApiTest:</p><SimpleApiTest /></div>
                     </div>
                     <div>
@@ -347,7 +347,8 @@ export default function LoginPage() {
                         <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
                     </div>
                 </div>
-            </div>
+            </div> */}
+
         </div>
     );
 }
